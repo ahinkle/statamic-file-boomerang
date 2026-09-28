@@ -35,8 +35,8 @@ class PullCommand extends Command
 
         try {
             $ids = Batch::ids();
-        } catch (Throwable $e) {
-            return $this->unreachable($e);
+        } catch (Throwable $throwable) {
+            return $this->unreachable($throwable);
         }
 
         return $this->pull($ids);

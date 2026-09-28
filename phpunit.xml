@@ -23,5 +23,11 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <env name="GIT_CONFIG_GLOBAL" value="/dev/null" force="true"/>
+        <env name="GIT_CONFIG_NOSYSTEM" value="1" force="true"/>
+        <env name="GITHUB_OUTPUT" value="" force="true"/>
+        <env name="GITHUB_STEP_SUMMARY" value="" force="true"/>
+        <server name="GITHUB_OUTPUT" value=""/>
+        <server name="GITHUB_STEP_SUMMARY" value=""/>
     </php>
 </phpunit>

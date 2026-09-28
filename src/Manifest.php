@@ -107,9 +107,9 @@ class Manifest
     public function withChanges(Collection $changes, ?string $cursor): self
     {
         return new self($cursor, $this->files
-            ->merge($changes->filter->isPut()->mapWithKeys(fn (Change $change) => [
+            ->merge($changes->mapWithKeys(fn (Change $change) => $change->isPut() ? [
                 $change->path => ['hash' => $change->blob, 'size' => $change->size, 'mtime' => null],
-            ]))
+            ] : []))
             ->except($changes->filter->isDelete()->pluck('path'))
             ->sortKeys());
     }

@@ -136,8 +136,11 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
     protected function isRateLimited(Response $response): bool
     {
-        return $response->header('Retry-After') !== ''
-            || $response->header('X-RateLimit-Remaining') === '0';
+        if ($response->header('Retry-After') !== '') {
+            return true;
+        }
+
+        return $response->header('X-RateLimit-Remaining') === '0';
     }
 
     protected function reasonFor(Response $response): string

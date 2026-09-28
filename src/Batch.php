@@ -49,9 +49,8 @@ readonly class Batch
     public static function ids(?string $after = null): Collection
     {
         return collect(Mailbox::disk()->files(Mailbox::path('batches')))
-            ->filter(fn (string $key) => str_ends_with($key, '.json'))
+            ->filter(fn (string $key) => str_ends_with($key, '.json') && Str::isUlid(basename($key, '.json')))
             ->map(fn (string $key) => basename($key, '.json'))
-            ->filter(fn (string $batch) => Str::isUlid($batch))
             ->filter(fn (string $batch) => $after === null || strcmp($batch, $after) > 0)
             ->sort(SORT_STRING)
             ->values();
@@ -65,8 +64,8 @@ readonly class Batch
 
         try {
             return static::parse($contents, $id);
-        } catch (InvalidBatch $invalid) {
-            throw $invalid->in(static::key($id));
+        } catch (InvalidBatch $invalidBatch) {
+            throw $invalidBatch->in(static::key($id));
         }
     }
 
@@ -89,7 +88,7 @@ readonly class Batch
     }
 
     /**
-     * @return array{version: int, id: string, created_at: string, host: string, editor: ?array{name: string, email: string}, ops: array<int, array<string, mixed>>}
+     * @return array{version: int, id: string, created_at: string, host: string, editor: ?array{name: string, email: string}, ops: array<array<string, mixed>>}
      */
     public function toArray(): array
     {

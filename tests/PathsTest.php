@@ -2,6 +2,7 @@
 
 use Ahinkle\FileBoomerang\Exceptions\UnsafePath;
 use Ahinkle\FileBoomerang\Paths;
+use Illuminate\Support\Facades\File;
 use Statamic\Facades\AssetContainer;
 
 it('allows files inside the tracked paths', function (string $path) {
@@ -31,7 +32,18 @@ it('refuses paths that could escape or are not tracked', function (string $path)
     'a sibling that shares a prefix' => 'contents/x.md',
     'an excluded file' => 'content/pages/.DS_Store',
     'a partial download' => 'content/pages/.file-boomerang-a1b2c3',
+    'a backtick' => 'content/`x`.md',
+    'an environment file' => 'content/.env',
 ]);
+
+it('refuses to write through a symbolic link inside a tracked path', function () {
+    File::ensureDirectoryExists(dirname(base_path()).'/elsewhere');
+    File::ensureDirectoryExists(base_path('content'));
+    symlink(dirname(base_path()).'/elsewhere', base_path('content/linked'));
+
+    expect(Paths::whyUnsafe('content/linked/x.md'))->toBe('it is inside a symbolic link')
+        ->and(Paths::allows('content/pages/x.md'))->toBeTrue();
+});
 
 it('tracks the roots of local asset containers inside the project', function () {
     config([
@@ -40,14 +52,16 @@ it('tracks the roots of local asset containers inside the project', function () 
         'filesystems.disks.cloud' => ['driver' => 's3', 'bucket' => 'assets'],
         'filesystems.disks.elsewhere' => ['driver' => 'local', 'root' => dirname(base_path()).'/shared'],
         'filesystems.disks.everything' => ['driver' => 'local', 'root' => base_path()],
+        'filesystems.disks.public' => ['driver' => 'local', 'root' => storage_path('app/public')],
+        'filesystems.disks.web' => ['driver' => 'local', 'root' => public_path()],
     ]);
 
-    collect(['images', 'media', 'cloud', 'elsewhere', 'everything'])
+    collect(['images', 'media', 'cloud', 'elsewhere', 'everything', 'public', 'web'])
         ->each(fn (string $disk) => AssetContainer::make($disk)->disk($disk)->save());
 
     expect(Paths::tracked())
         ->toContain('public/img', 'public/media', 'content')
-        ->not->toContain('', 'shared')
+        ->not->toContain('', 'shared', 'storage/app/public', 'public')
         ->and(Paths::allows('public/img/staff/greg.jpg'))->toBeTrue()
         ->and(Paths::allows('public/img/.meta/staff/greg.jpg.yaml'))->toBeTrue();
 });

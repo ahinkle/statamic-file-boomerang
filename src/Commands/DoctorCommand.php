@@ -131,7 +131,7 @@ class DoctorCommand extends Command
 
         return match (true) {
             Http::github()->get("repos/{$repository}")->failed() => "The token cannot see {$repository}. Give it access to that repository.",
-            Http::github()->get("repos/{$repository}/actions/workflows/file-boomerang.yml")->failed() => "The token cannot start .github/workflows/file-boomerang.yml. Give it Actions: Read and write, run \"php artisan boomerang:install\" and push the workflow to the default branch.",
+            Http::github()->get("repos/{$repository}/actions/workflows/file-boomerang.yml")->failed() => 'The token cannot start .github/workflows/file-boomerang.yml. Give it Actions: Read and write, run "php artisan boomerang:install" and push the workflow to the default branch.',
             default => null,
         };
     }

@@ -19,9 +19,9 @@ class Landing
 {
     protected string $branch = 'main';
 
-    public static function make(): static
+    public static function make(): self
     {
-        return new static;
+        return new self;
     }
 
     public function onto(string $branch): static
@@ -92,7 +92,7 @@ class Landing
         $this->push(collect([
             $this->commitLanding($outcome, $batches),
             $this->commitConflicts($outcome, $batches),
-        ])->filter());
+        ])->filter(fn (?string $refspec) => $refspec !== null));
 
         return $outcome;
     }

@@ -100,7 +100,7 @@ class StatusCommand extends Command
 
         $batches
             ->toBase()
-            ->flatMap->changes
+            ->flatMap(fn (Batch $batch) => $batch->changes)
             ->keyBy('path')
             ->sortKeys()
             ->each(fn (Change $change) => $this->components->twoColumnDetail($change->path, $change->type->value));

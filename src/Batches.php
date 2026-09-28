@@ -28,7 +28,7 @@ class Batches extends Collection
      */
     public function editors(): Collection
     {
-        return $this->toBase()->pluck('editor')->filter()->unique('email')->values();
+        return $this->toBase()->map(fn (Batch $batch) => $batch->editor)->filter()->unique('email')->values();
     }
 
     /**
@@ -37,9 +37,9 @@ class Batches extends Collection
     public function blobs(): Collection
     {
         return $this->toBase()
-            ->flatMap->changes
+            ->flatMap(fn (Batch $batch) => $batch->changes)
             ->flatMap(fn (Change $change) => [$change->blob, $change->base])
-            ->filter()
+            ->filter(fn (?string $hash) => $hash !== null)
             ->unique()
             ->values();
     }

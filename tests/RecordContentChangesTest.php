@@ -81,7 +81,8 @@ it('mails every save in a request as one batch after the response', function () 
     Entry::find('home')->set('title', 'Welcome home')->save();
     Entry::make()->collection('pages')->id('about')->slug('about')->data(['title' => 'About'])->save();
 
-    expect(Batch::pending())->toBeEmpty();
+    expect(Batch::pending())->toBeEmpty()
+        ->and(defer())->toHaveCount(1);
 
     defer()->invoke();
 

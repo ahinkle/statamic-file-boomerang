@@ -167,7 +167,7 @@ class Paths
         return AssetContainer::all()
             ->whereInstanceOf(Container::class)
             ->map(static::assetContainerRoot(...))
-            ->filter()
+            ->filter(fn (?string $root) => $root !== null)
             ->values();
     }
 

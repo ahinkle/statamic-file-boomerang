@@ -71,7 +71,7 @@ class InstallCommand extends Command
             'Commit .github/workflows/file-boomerang.yml to the default branch. GitHub only starts workflows that are there.',
             'Add /storage/framework/file-boomerang* to .gitignore so no server baseline is ever committed.',
             'Build command, right after composer install and before optimize or any cache warming: php artisan boomerang:pull',
-            'Deploy command, when the Stache cache is shared (Redis or the database): php please stache:refresh',
+            'Deploy command, next to the ones you have (keep migrate), when the Stache cache is shared (Redis or the database): php please stache:refresh',
             'Check everything with: php artisan boomerang:doctor',
         ])->each(fn (string $step, int $index) => $this->line(($index + 1).". {$step}"));
     }

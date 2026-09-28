@@ -7,6 +7,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\File;
 use League\Flysystem\StorageAttributes;
 use League\Flysystem\UnableToReadFile;
+use League\Flysystem\UnableToWriteFile;
 use Throwable;
 
 class Blob
@@ -50,10 +51,10 @@ class Blob
             throw_if(($actual = GitHash::ofFile($temporary)) !== $hash, new CorruptBlob($hash, $actual));
 
             File::move($temporary, $absolutePath);
-        } catch (Throwable $e) {
+        } catch (Throwable $throwable) {
             File::delete($temporary);
 
-            throw $e;
+            throw $throwable;
         }
     }
 
@@ -94,11 +95,11 @@ class Blob
         $temporary = tempnam($directory, '.file-boomerang-');
 
         try {
-            File::put($temporary, $stream);
-        } catch (Throwable $e) {
+            throw_if(file_put_contents($temporary, $stream) === false, UnableToWriteFile::atLocation($temporary));
+        } catch (Throwable $throwable) {
             File::delete($temporary);
 
-            throw $e;
+            throw $throwable;
         } finally {
             if (is_resource($stream)) {
                 fclose($stream);

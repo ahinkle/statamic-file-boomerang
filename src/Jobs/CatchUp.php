@@ -38,10 +38,10 @@ class CatchUp
 
         try {
             $outcome->write();
-        } catch (Throwable $e) {
+        } catch (Throwable $throwable) {
             $this->remember($outcome, $manifest, $manifest->cursor);
 
-            throw $e;
+            throw $throwable;
         }
 
         $this->remember($outcome, $manifest, $newest->id);

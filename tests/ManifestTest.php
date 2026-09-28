@@ -94,12 +94,12 @@ it('trusts the baseline for files whose size and modified time have not moved', 
 });
 
 it('rehashes a file saved in the same second it was recorded', function () {
-    $now = time();
+    $later = time() + 5;
 
-    $this->writeFile('content/pages/home.md', 'Welcome', $now);
+    $this->writeFile('content/pages/home.md', 'Welcome', $later);
     $manifest = Manifest::seed();
 
-    $this->writeFile('content/pages/home.md', 'Welkom!', $now);
+    $this->writeFile('content/pages/home.md', 'Welkom!', $later);
 
     expect($manifest->changes()->pluck('path')->all())->toBe(['content/pages/home.md']);
 });
