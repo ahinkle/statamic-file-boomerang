@@ -36,6 +36,12 @@ class Mailbox
             );
         }
 
+        throw_if(
+            blank(config('file-boomerang.mailbox.bucket')),
+            InvalidArgumentException::class,
+            'The mailbox has no bucket. Set FILE_BOOMERANG_BUCKET, or FILE_BOOMERANG_DISK to use a disk from config/filesystems.php.',
+        );
+
         return [
             'driver' => 's3',
             'bucket' => config('file-boomerang.mailbox.bucket'),
