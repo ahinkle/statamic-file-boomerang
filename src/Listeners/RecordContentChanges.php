@@ -27,7 +27,7 @@ class RecordContentChanges extends Subscriber
             return;
         }
 
-        defer(fn () => MailChanges::dispatchSync($editor), 'file-boomerang')->always();
+        defer(fn () => rescue(fn () => MailChanges::dispatchSync($editor)), 'file-boomerang')->always();
     }
 
     /**

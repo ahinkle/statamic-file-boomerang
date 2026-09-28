@@ -5,7 +5,6 @@ namespace Ahinkle\FileBoomerang\Commands;
 use Ahinkle\FileBoomerang\Batch;
 use Ahinkle\FileBoomerang\Batches;
 use Ahinkle\FileBoomerang\Change;
-use Ahinkle\FileBoomerang\Editor;
 use Ahinkle\FileBoomerang\LandingRequest;
 use Ahinkle\FileBoomerang\Mailbox;
 use Ahinkle\FileBoomerang\Manifest;
@@ -78,7 +77,7 @@ class Status extends Command
 
         $this->components->twoColumnDetail('Oldest', $batches->first()->createdAt()->diffForHumans());
         $this->components->twoColumnDetail('Newest', $batches->newest()?->createdAt()->diffForHumans());
-        $this->components->twoColumnDetail('Editors', $batches->editors()->map(fn (Editor $editor) => $editor->name)->implode(', ') ?: 'system only');
+        $this->components->twoColumnDetail('Editors', $batches->editors()->pluck('name')->implode(', ') ?: 'system only');
 
         $this->paths($batches);
     }
