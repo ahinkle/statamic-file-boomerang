@@ -8,11 +8,16 @@
         "git",
         "laravel-cloud"
     ],
+    "homepage": "https://github.com/ahinkle/statamic-file-boomerang",
     "authors": [
         {
             "name": "Andy Hinkle"
         }
     ],
+    "support": {
+        "issues": "https://github.com/ahinkle/statamic-file-boomerang/issues",
+        "source": "https://github.com/ahinkle/statamic-file-boomerang"
+    },
     "require": {
         "php": "^8.3",
         "league/flysystem-aws-s3-v3": "^3.0",
