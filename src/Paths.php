@@ -7,7 +7,7 @@ use Generator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Str;
-use Statamic\Contracts\Assets\AssetContainer as Container;
+use Statamic\Assets\AssetContainer as Container;
 use Statamic\Facades\AssetContainer;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
