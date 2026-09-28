@@ -6,8 +6,8 @@ use RuntimeException;
 
 class InvalidBatch extends RuntimeException
 {
-    public static function because(string $reason): static
+    public static function because(string $reason): self
     {
-        return new static("The batch is invalid: {$reason}.");
+        return new self("The batch is invalid: {$reason}.");
     }
 }

@@ -17,9 +17,9 @@ class Landing
 {
     protected string $branch = 'main';
 
-    public static function make(): static
+    public static function make(): self
     {
-        return new static;
+        return new self;
     }
 
     public function onto(string $branch): static
@@ -86,7 +86,7 @@ class Landing
         $this->stage($outcome->paths());
 
         if ($this->hasStagedChanges()) {
-            $this->commit(config('file-boomerang.landing.commit_message'), $outcome->paths(), $batches);
+            $this->commit(config()->string('file-boomerang.landing.commit_message'), $outcome->paths(), $batches);
 
             $this->push();
         }
@@ -100,7 +100,7 @@ class Landing
             return null;
         }
 
-        $branch = "file-boomerang/conflict-{$batches->first()->id}";
+        $branch = "file-boomerang/conflict-{$outcome->batchIds->first()}";
 
         $this->pushConflictBranch($outcome->conflicts, $branch, $batches);
 
@@ -146,7 +146,7 @@ class Landing
             ),
         ]);
 
-        return $response->successful() ? $response->json('html_url') : null;
+        return $response->successful() ? $response->fluent()->string('html_url')->value() : null;
     }
 
     /**
@@ -164,7 +164,7 @@ class Landing
             ),
         ]);
 
-        return $response->successful() ? $response->json('html_url') : null;
+        return $response->successful() ? $response->fluent()->string('html_url')->value() : null;
     }
 
     /**
@@ -195,7 +195,7 @@ class Landing
     {
         $batches->each->delete();
 
-        Blob::prune(Batch::pending(), now()->subMinutes(config('file-boomerang.landing.blob_grace')));
+        Blob::prune(Batch::pending(), now()->subMinutes(config()->integer('file-boomerang.landing.blob_grace')));
     }
 
     protected function announce(LandingResult $result): void
@@ -213,7 +213,7 @@ class Landing
 
     protected function writeOutput(LandingResult $result): void
     {
-        if (blank($output = Env::get('GITHUB_OUTPUT'))) {
+        if (! $output = $this->actionsFile('GITHUB_OUTPUT')) {
             return;
         }
 
@@ -226,7 +226,7 @@ class Landing
 
     protected function writeStepSummary(LandingResult $result): void
     {
-        if (blank($summary = Env::get('GITHUB_STEP_SUMMARY'))) {
+        if (! $summary = $this->actionsFile('GITHUB_STEP_SUMMARY')) {
             return;
         }
 
@@ -240,9 +240,18 @@ class Landing
             ->implode("\n\n")."\n");
     }
 
+    protected function actionsFile(string $variable): ?string
+    {
+        $path = Env::get($variable);
+
+        return is_string($path) && $path !== '' ? $path : null;
+    }
+
     protected function callDeployHook(string $sha): void
     {
-        if (blank($hook = config('file-boomerang.landing.deploy_hook'))) {
+        $hook = config('file-boomerang.landing.deploy_hook');
+
+        if (! is_string($hook) || blank($hook)) {
             return;
         }
 
@@ -251,7 +260,9 @@ class Landing
 
     protected function dispatchWorkflows(): void
     {
-        collect(config('file-boomerang.landing.workflows'))->each(fn (string $workflow) => Http::github()
+        collect(config()->array('file-boomerang.landing.workflows'))
+            ->filter(fn (mixed $workflow) => is_string($workflow))
+            ->each(fn (string $workflow) => Http::github()
             ->post("repos/{$this->repository()}/actions/workflows/".rawurlencode($workflow).'/dispatches', ['ref' => $this->branch])
             ->throw());
     }
@@ -276,7 +287,7 @@ class Landing
     {
         $credited = $batches->touching($paths);
 
-        $author = $credited->newest()?->editor ?? Editor::fromArray(config('file-boomerang.landing.author'));
+        $author = $credited->newest()->editor ?? Editor::fromArray(config()->array('file-boomerang.landing.author'));
 
         $coAuthors = $credited->editors()->reject(fn (Editor $editor) => $editor->email === $author->email);
 
@@ -335,9 +346,9 @@ class Landing
         return trim($this->git('rev-parse', 'HEAD')->throw()->output());
     }
 
-    protected function repository(): ?string
+    protected function repository(): string
     {
-        return config('file-boomerang.github.repository');
+        return config()->string('file-boomerang.github.repository');
     }
 
     protected function git(string ...$arguments): ProcessResult

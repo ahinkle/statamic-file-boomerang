@@ -47,18 +47,28 @@ class Dispatch extends Command
 
     protected function describe(Batches $batches): void
     {
+        if (! $newest = $batches->newest()) {
+            $this->components->info('Nothing is waiting in the mailbox.');
+
+            return;
+        }
+
         $waiting = $batches->count().' '.Str::plural('batch', $batches->count());
 
         $this->components->info(match (true) {
-            $batches->isEmpty() => 'Nothing is waiting in the mailbox.',
-            ! $batches->isQuiet(config('file-boomerang.debounce')) => "{$waiting} waiting. GitHub will be asked {$this->quietAt($batches)}, once the editors go quiet.",
+            ! $batches->isQuiet($this->debounce()) => "{$waiting} waiting. GitHub will be asked {$this->quietAt($newest)}, once the editors go quiet.",
             default => "{$waiting} waiting. GitHub was asked {$this->requestedAt()} to land them.",
         });
     }
 
-    protected function quietAt(Batches $batches): string
+    protected function quietAt(Batch $newest): string
     {
-        return $batches->newest()->createdAt()->addSeconds(config('file-boomerang.debounce'))->diffForHumans();
+        return $newest->createdAt()->addSeconds($this->debounce())->diffForHumans();
+    }
+
+    protected function debounce(): int
+    {
+        return config()->integer('file-boomerang.debounce');
     }
 
     protected function requestedAt(): string

@@ -6,6 +6,7 @@ use Ahinkle\FileBoomerang\Exceptions\CorruptBlob;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\File;
 use League\Flysystem\StorageAttributes;
+use League\Flysystem\UnableToReadFile;
 
 class Blob
 {
@@ -29,7 +30,7 @@ class Blob
 
     public static function contents(string $hash): string
     {
-        $bytes = Mailbox::disk()->get(static::path($hash));
+        $bytes = Mailbox::disk()->get(static::path($hash)) ?? throw UnableToReadFile::fromLocation(static::path($hash));
 
         if (($actual = GitHash::of($bytes)) !== $hash) {
             throw new CorruptBlob($hash, $actual);
@@ -57,8 +58,8 @@ class Blob
     {
         $referenced = $remaining->blobs()->flip();
 
-        return collect(Mailbox::disk()->listContents(Mailbox::path('blobs'), true))
-            ->filter->isFile()
+        return collect(Mailbox::disk()->listContents(Mailbox::path('blobs'), true)->toArray())
+            ->filter(fn (StorageAttributes $blob) => $blob->isFile())
             ->reject(fn (StorageAttributes $blob) => $referenced->has(basename($blob->path())))
             ->filter(fn (StorageAttributes $blob) => $blob->lastModified() < $olderThan->getTimestamp())
             ->each(fn (StorageAttributes $blob) => Mailbox::disk()->delete($blob->path()))
@@ -76,7 +77,7 @@ class Blob
             return;
         }
 
-        $stream = fopen($temporary, 'rb');
+        $stream = fopen($temporary, 'rb') ?: throw UnableToReadFile::fromLocation($temporary);
 
         try {
             Mailbox::disk()->writeStream(static::path($hash), $stream);
@@ -90,10 +91,10 @@ class Blob
     protected static function download(string $hash, string $directory): string
     {
         $temporary = tempnam($directory, '.file-boomerang-');
-        $stream = Mailbox::disk()->readStream(static::path($hash));
+        $stream = Mailbox::disk()->readStream(static::path($hash)) ?? throw UnableToReadFile::fromLocation(static::path($hash));
 
         try {
-            File::put($temporary, $stream);
+            file_put_contents($temporary, $stream);
         } finally {
             if (is_resource($stream)) {
                 fclose($stream);

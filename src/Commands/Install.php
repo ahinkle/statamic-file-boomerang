@@ -53,7 +53,7 @@ class Install extends Command
 
         File::put($this->workflowPath(), str_replace(
             ['{{ branch }}', '{{ event }}', '{{ php }}'],
-            [config('file-boomerang.github.branch'), config('file-boomerang.github.event'), PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION],
+            [config()->string('file-boomerang.github.branch'), config()->string('file-boomerang.github.event'), PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION],
             File::get(dirname(__DIR__, 2).'/stubs/workflow.yml'),
         ));
 

@@ -17,11 +17,11 @@ class Batches extends Collection
 
     public function isQuiet(int $seconds): bool
     {
-        if ($this->isEmpty()) {
+        if (! $newest = $this->newest()) {
             return true;
         }
 
-        return $this->newest()->createdAt()->addSeconds($seconds)->lte(now());
+        return $newest->createdAt()->addSeconds($seconds)->lte(now());
     }
 
     /**
@@ -29,7 +29,7 @@ class Batches extends Collection
      */
     public function editors(): Collection
     {
-        return $this->toBase()->pluck('editor')->filter()->unique('email')->values();
+        return $this->toBase()->map(fn (Batch $batch) => $batch->editor)->filter()->unique('email')->values();
     }
 
     /**
@@ -40,7 +40,7 @@ class Batches extends Collection
         return $this->toBase()
             ->flatMap(fn (Batch $batch) => $batch->changes)
             ->flatMap(fn (Change $change) => [$change->blob, $change->base])
-            ->filter()
+            ->filter(fn (?string $hash) => $hash !== null)
             ->unique()
             ->values();
     }
@@ -55,7 +55,7 @@ class Batches extends Collection
 
     public function applyTo(Tree $tree, Divergence $divergence): Outcome
     {
-        return tap(new Outcome($tree, $this->toBase()->pluck('id')), function (Outcome $outcome) use ($divergence) {
+        return tap(new Outcome($tree, $this->toBase()->map(fn (Batch $batch) => $batch->id)), function (Outcome $outcome) use ($divergence) {
             $this->each(fn (Batch $batch) => $batch->changes->each(
                 fn (Change $change) => $this->applyChange($change, $batch, $outcome, $divergence)
             ));
@@ -115,12 +115,13 @@ class Batches extends Collection
 
         $ours = $outcome->contents($change->path);
         $base = $outcome->tree->base($change->base);
+        $theirs = $change->contents();
 
-        if ($ours === null || $base === null) {
+        if ($ours === null || $base === null || $theirs === null) {
             return null;
         }
 
-        return (new ThreeWayMerge)($ours, $base, $change->contents());
+        return (new ThreeWayMerge)($ours, $base, $theirs);
     }
 
     protected function whyUnsafe(string $path): ?string

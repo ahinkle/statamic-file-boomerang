@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Symfony\Component\Finder\SplFileInfo;
 
 class Manifest
@@ -22,7 +23,7 @@ class Manifest
         public Collection $files = new Collection,
     ) {}
 
-    public static function current(): ?static
+    public static function current(): ?self
     {
         $manifest = File::isFile(static::path()) ? json_decode(File::get(static::path()), true) : null;
 
@@ -30,22 +31,28 @@ class Manifest
             return null;
         }
 
-        return new static($manifest['cursor'], collect($manifest['files']));
+        return new self($manifest['cursor'], collect($manifest['files']));
     }
 
-    public static function seed(?string $cursor = null): static
+    public static function seed(?string $cursor = null): self
     {
         clearstatcache();
 
         $startedAt = time();
 
-        return new static($cursor, Paths::files()
+        return new self($cursor, Paths::files()
             ->reject(fn (SplFileInfo $file) => Paths::isTooLarge($file))
             ->map(fn (SplFileInfo $file) => static::entry(GitHash::ofFile($file->getPathname()), $file, $startedAt))
             ->collect()
             ->sortKeys());
     }
 
+    /**
+     * @template TReturn
+     *
+     * @param  Closure(): TReturn  $callback
+     * @return TReturn
+     */
     public static function lock(Closure $callback): mixed
     {
         if (static::$locked) {
@@ -54,7 +61,8 @@ class Manifest
 
         File::ensureDirectoryExists(dirname(static::path()));
 
-        $handle = fopen(dirname(static::path()).'/file-boomerang.lock', 'c');
+        $lock = dirname(static::path()).'/file-boomerang.lock';
+        $handle = fopen($lock, 'c') ?: throw new RuntimeException("File Boomerang could not open its lock file [{$lock}].");
 
         try {
             flock($handle, LOCK_EX);
@@ -96,12 +104,12 @@ class Manifest
     /**
      * @param  Collection<array-key, Change>  $changes
      */
-    public function withChanges(Collection $changes, string $cursor): static
+    public function withChanges(Collection $changes, string $cursor): self
     {
-        return new static($cursor, $this->files
-            ->merge($changes->filter->isPut()->mapWithKeys(fn (Change $change) => [
+        return new self($cursor, $this->files
+            ->merge($changes->mapWithKeys(fn (Change $change) => $change->isPut() ? [
                 $change->path => ['hash' => $change->blob, 'size' => $change->size, 'mtime' => null],
-            ]))
+            ] : []))
             ->except($changes->filter->isDelete()->pluck('path'))
             ->sortKeys());
     }
@@ -145,10 +153,9 @@ class Manifest
     protected function deletes(Collection $files): Collection
     {
         return $this->files
-            ->keys()
-            ->reject(fn (string $path) => $files->has($path))
-            ->filter(fn (string $path) => Paths::allows($path))
-            ->map(fn (string $path) => Change::delete($path, $this->known($path)))
+            ->reject(fn (array $entry, string $path) => $files->has($path))
+            ->filter(fn (array $entry, string $path) => Paths::allows($path))
+            ->map(fn (array $entry, string $path) => Change::delete($path, $entry['hash']))
             ->values();
     }
 
@@ -158,7 +165,7 @@ class Manifest
             return false;
         }
 
-        Log::warning("File Boomerang skipped [{$path}] because it is larger than the max_file_size of ".config('file-boomerang.max_file_size').' bytes.');
+        Log::warning("File Boomerang skipped [{$path}] because it is larger than the max_file_size of ".config()->integer('file-boomerang.max_file_size').' bytes.');
 
         return true;
     }
@@ -178,13 +185,18 @@ class Manifest
      */
     protected static function entry(string $hash, SplFileInfo $file, int $hashedAt): array
     {
+        $modifiedAt = File::lastModified($file->getPathname());
+
         return [
             'hash' => $hash,
-            'size' => $file->getSize(),
-            'mtime' => $file->getMTime() < $hashedAt ? $file->getMTime() : null,
+            'size' => File::size($file->getPathname()),
+            'mtime' => $modifiedAt < $hashedAt ? $modifiedAt : null,
         ];
     }
 
+    /**
+     * @phpstan-assert-if-true array{cursor: ?string, files: array<string, array{hash: string, size: int, mtime: ?int}>} $manifest
+     */
     protected static function isReadable(mixed $manifest): bool
     {
         return is_array($manifest)
@@ -206,6 +218,6 @@ class Manifest
 
     protected static function path(): string
     {
-        return config('file-boomerang.manifest');
+        return config()->string('file-boomerang.manifest');
     }
 }

@@ -12,6 +12,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 class CatchUpBeforeEditing
 {
+    /**
+     * @param  Closure(Request): Response  $next
+     */
     public function handle(Request $request, Closure $next): Response
     {
         if ($this->isDue()) {
@@ -43,11 +46,11 @@ class CatchUpBeforeEditing
         clearstatcache(true, $this->stamp());
 
         return File::exists($this->stamp())
-            && File::lastModified($this->stamp()) > now()->subSeconds(config('file-boomerang.catch_up.interval'))->getTimestamp();
+            && File::lastModified($this->stamp()) > now()->subSeconds(config()->integer('file-boomerang.catch_up.interval'))->getTimestamp();
     }
 
     protected function stamp(): string
     {
-        return dirname(config('file-boomerang.manifest')).'/file-boomerang-caught-up';
+        return dirname(config()->string('file-boomerang.manifest')).'/file-boomerang-caught-up';
     }
 }

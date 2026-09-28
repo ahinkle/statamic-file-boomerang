@@ -7,6 +7,7 @@ use Ahinkle\FileBoomerang\Batches;
 use Ahinkle\FileBoomerang\Change;
 use Ahinkle\FileBoomerang\Editor;
 use Ahinkle\FileBoomerang\LandingRequest;
+use Ahinkle\FileBoomerang\Mailbox;
 use Ahinkle\FileBoomerang\Manifest;
 use Ahinkle\FileBoomerang\Paths;
 use Illuminate\Console\Command;
@@ -40,13 +41,19 @@ class Status extends Command
 
     protected function mailbox(): string
     {
-        $prefix = config('file-boomerang.mailbox.prefix');
+        $disk = config('file-boomerang.mailbox.disk');
+        $bucket = config('file-boomerang.mailbox.bucket');
 
-        if ($disk = config('file-boomerang.mailbox.disk')) {
-            return "the {$disk} disk, under {$prefix}/";
-        }
+        return match (true) {
+            is_string($disk) && $disk !== '' => "the {$disk} disk, under {$this->prefix()}",
+            is_string($bucket) && $bucket !== '' => "the {$bucket} bucket, under {$this->prefix()}",
+            default => '<fg=yellow>no bucket or disk is set</>',
+        };
+    }
 
-        return 'the '.(config('file-boomerang.mailbox.bucket') ?? 'unset').' bucket, under '.$prefix.'/';
+    protected function prefix(): string
+    {
+        return Mailbox::path().'/';
     }
 
     protected function cursor(): string
@@ -70,7 +77,7 @@ class Status extends Command
         }
 
         $this->components->twoColumnDetail('Oldest', $batches->first()->createdAt()->diffForHumans());
-        $this->components->twoColumnDetail('Newest', $batches->newest()->createdAt()->diffForHumans());
+        $this->components->twoColumnDetail('Newest', $batches->newest()?->createdAt()->diffForHumans());
         $this->components->twoColumnDetail('Editors', $batches->editors()->map(fn (Editor $editor) => $editor->name)->implode(', ') ?: 'system only');
 
         $this->paths($batches);
@@ -109,7 +116,7 @@ class Status extends Command
         }
 
         $this->newLine();
-        $this->components->warn('Too large to send, over '.config('file-boomerang.max_file_size').' bytes');
+        $this->components->warn('Too large to send, over '.config()->integer('file-boomerang.max_file_size').' bytes');
 
         $files->each(fn (string $path) => $this->components->twoColumnDetail($path, 'skipped'));
     }

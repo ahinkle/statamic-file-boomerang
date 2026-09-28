@@ -7,47 +7,24 @@ use Illuminate\Support\Collection;
 readonly class Outcome
 {
     /**
-     * @var Collection<string, Change>
-     */
-    public Collection $changes;
-
-    /**
-     * @var Collection<string, string>
-     */
-    public Collection $merged;
-
-    /**
-     * @var Collection<string, Conflict>
-     */
-    public Collection $conflicts;
-
-    /**
-     * @var Collection<string, string>
-     */
-    public Collection $skipped;
-
-    /**
-     * @var Collection<string, ?string>
-     */
-    protected Collection $originals;
-
-    /**
-     * @var Collection<string, ?string>
-     */
-    protected Collection $hashes;
-
-    /**
      * @param  Collection<int, string>  $batchIds
+     * @param  Collection<string, Change>  $changes
+     * @param  Collection<string, string>  $merged
+     * @param  Collection<string, Conflict>  $conflicts
+     * @param  Collection<string, string>  $skipped
+     * @param  Collection<string, ?string>  $originals
+     * @param  Collection<string, ?string>  $hashes
      */
-    public function __construct(public Tree $tree, public Collection $batchIds)
-    {
-        $this->changes = new Collection;
-        $this->merged = new Collection;
-        $this->conflicts = new Collection;
-        $this->skipped = new Collection;
-        $this->originals = new Collection;
-        $this->hashes = new Collection;
-    }
+    public function __construct(
+        public Tree $tree,
+        public Collection $batchIds,
+        public Collection $changes = new Collection,
+        public Collection $merged = new Collection,
+        public Collection $conflicts = new Collection,
+        public Collection $skipped = new Collection,
+        protected Collection $originals = new Collection,
+        protected Collection $hashes = new Collection,
+    ) {}
 
     public function hash(string $path): ?string
     {
@@ -58,7 +35,7 @@ readonly class Outcome
     {
         return match (true) {
             $this->merged->has($path) => $this->merged->get($path),
-            $this->changes->has($path) => $this->changes->get($path)->contents(),
+            $this->changes->has($path) => $this->changes->get($path)?->contents(),
             default => $this->tree->contents($path),
         };
     }

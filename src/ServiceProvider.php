@@ -36,7 +36,7 @@ class ServiceProvider extends AddonServiceProvider
                 : config('file-boomerang.github.token');
 
             return Http::baseUrl('https://api.github.com')
-                ->withToken((string) $token)
+                ->withToken(is_string($token) ? $token : '')
                 ->accept('application/vnd.github+json')
                 ->withHeaders(['X-GitHub-Api-Version' => '2022-11-28'])
                 ->connectTimeout(10)

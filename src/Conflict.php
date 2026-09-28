@@ -17,14 +17,14 @@ readonly class Conflict
         public Collection $editors,
     ) {}
 
-    public static function from(Change $change, Batch $batch): static
+    public static function from(Change $change, Batch $batch): self
     {
-        return new static($change, $batch->editor, collect([$batch->id]), collect([$batch->editor])->filter()->values());
+        return new self($change, $batch->editor, collect([$batch->id]), collect([$batch->editor])->filter()->values());
     }
 
-    public function joinedBy(Change $change, Batch $batch): static
+    public function joinedBy(Change $change, Batch $batch): self
     {
-        return new static(
+        return new self(
             $change,
             $batch->editor,
             $this->batchIds->concat([$batch->id]),

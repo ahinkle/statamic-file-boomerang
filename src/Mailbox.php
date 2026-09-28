@@ -19,21 +19,28 @@ class Mailbox
 
     public static function path(string ...$segments): string
     {
-        return collect([config('file-boomerang.mailbox.prefix'), ...$segments])
-            ->map(fn (?string $segment) => trim((string) $segment, '/'))
-            ->filter(fn (string $segment) => $segment !== '')
+        return collect([static::prefix(), ...$segments])
+            ->map(fn (string $segment) => trim($segment, '/'))
+            ->reject(fn (string $segment) => $segment === '')
             ->implode('/');
     }
 
+    protected static function prefix(): string
+    {
+        $prefix = config('file-boomerang.mailbox.prefix');
+
+        return is_string($prefix) ? $prefix : '';
+    }
+
     /**
-     * @return array<string, mixed>
+     * @return array<mixed>
      */
     protected static function config(): array
     {
-        if ($disk = config('file-boomerang.mailbox.disk')) {
-            return config("filesystems.disks.{$disk}") ?? throw new InvalidArgumentException(
-                "The mailbox disk [{$disk}] is not defined in config/filesystems.php."
-            );
+        $disk = config('file-boomerang.mailbox.disk');
+
+        if (is_string($disk) && $disk !== '') {
+            return static::diskConfig($disk);
         }
 
         throw_if(
@@ -51,5 +58,17 @@ class Mailbox
             'region' => config('file-boomerang.mailbox.region'),
             'use_path_style_endpoint' => config('file-boomerang.mailbox.use_path_style_endpoint'),
         ];
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    protected static function diskConfig(string $disk): array
+    {
+        $config = config("filesystems.disks.{$disk}");
+
+        throw_unless(is_array($config), InvalidArgumentException::class, "The mailbox disk [{$disk}] is not defined in config/filesystems.php.");
+
+        return $config;
     }
 }

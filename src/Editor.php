@@ -11,7 +11,7 @@ readonly class Editor
 {
     public function __construct(public string $name, public string $email) {}
 
-    public static function from(?Authenticatable $user): ?static
+    public static function from(?Authenticatable $user): ?self
     {
         $email = static::clean(static::attribute($user, 'email'));
 
@@ -19,7 +19,7 @@ readonly class Editor
             return null;
         }
 
-        return new static(static::clean(static::attribute($user, 'name')) ?: $email, $email);
+        return new self(static::clean(static::attribute($user, 'name')) ?: $email, $email);
     }
 
     /**
@@ -31,16 +31,16 @@ readonly class Editor
     }
 
     /**
-     * @param  array<string, mixed>  $attributes
+     * @param  array<mixed>  $attributes
      */
-    public static function fromArray(array $attributes): static
+    public static function fromArray(array $attributes): self
     {
         throw_unless(
             is_string($attributes['name'] ?? null) && is_string($attributes['email'] ?? null),
             InvalidBatch::because('the editor needs a name and an email'),
         );
 
-        return new static(static::clean($attributes['name']), static::clean($attributes['email']));
+        return new self(static::clean($attributes['name']), static::clean($attributes['email']));
     }
 
     protected static function attribute(?Authenticatable $user, string $key): mixed

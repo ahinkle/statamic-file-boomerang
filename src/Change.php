@@ -14,16 +14,20 @@ readonly class Change
         public ?int $size = null,
     ) {}
 
-    public static function put(string $path, string $blob, ?string $base, int $size): static
+    public static function put(string $path, string $blob, ?string $base, int $size): self
     {
-        return new static($path, ChangeType::Put, $blob, $base, $size);
+        return new self($path, ChangeType::Put, $blob, $base, $size);
     }
 
-    public static function delete(string $path, string $base): static
+    public static function delete(string $path, string $base): self
     {
-        return new static($path, ChangeType::Delete, base: $base);
+        return new self($path, ChangeType::Delete, base: $base);
     }
 
+    /**
+     * @phpstan-assert-if-true !null $this->blob
+     * @phpstan-assert-if-true !null $this->size
+     */
     public function isPut(): bool
     {
         return $this->type === ChangeType::Put;
@@ -51,14 +55,17 @@ readonly class Change
 
     public function writeTo(Tree $tree): void
     {
-        match ($this->type) {
-            ChangeType::Put => $tree->put($this->path, $this->blob),
-            ChangeType::Delete => $tree->delete($this->path),
-        };
+        if ($this->isPut()) {
+            $tree->put($this->path, $this->blob);
+
+            return;
+        }
+
+        $tree->delete($this->path);
     }
 
     /**
-     * @return array{path: string, type: string, blob?: string, base: ?string, size?: int}
+     * @return array{path: string, type: string, blob?: ?string, base: ?string, size?: ?int}
      */
     public function toArray(): array
     {
@@ -79,15 +86,16 @@ readonly class Change
     }
 
     /**
-     * @param  array<string, mixed>  $attributes
+     * @param  array<mixed>  $attributes
      */
-    public static function fromArray(array $attributes): static
+    public static function fromArray(array $attributes): self
     {
         $path = $attributes['path'] ?? null;
+        $type = $attributes['type'] ?? null;
 
         throw_unless(is_string($path) && $path !== '', InvalidBatch::because('an operation has no path'));
 
-        return match (is_string($attributes['type'] ?? null) ? ChangeType::tryFrom($attributes['type']) : null) {
+        return match (is_string($type) ? ChangeType::tryFrom($type) : null) {
             ChangeType::Put => static::putFromArray($path, $attributes),
             ChangeType::Delete => static::deleteFromArray($path, $attributes),
             null => throw InvalidBatch::because("the operation on [{$path}] has an unknown type"),
@@ -95,25 +103,31 @@ readonly class Change
     }
 
     /**
-     * @param  array<string, mixed>  $attributes
+     * @param  array<mixed>  $attributes
      */
-    protected static function putFromArray(string $path, array $attributes): static
+    protected static function putFromArray(string $path, array $attributes): self
     {
-        throw_unless(GitHash::isValid($attributes['blob'] ?? null), InvalidBatch::because("the put of [{$path}] has no valid blob hash"));
-        throw_unless(array_key_exists('base', $attributes), InvalidBatch::because("the put of [{$path}] has no base"));
-        throw_unless($attributes['base'] === null || GitHash::isValid($attributes['base']), InvalidBatch::because("the put of [{$path}] has an invalid base hash"));
-        throw_unless(is_int($attributes['size'] ?? null) && $attributes['size'] >= 0, InvalidBatch::because("the put of [{$path}] has no valid size"));
+        $blob = $attributes['blob'] ?? null;
+        $base = $attributes['base'] ?? null;
+        $size = $attributes['size'] ?? null;
 
-        return static::put($path, $attributes['blob'], $attributes['base'], $attributes['size']);
+        throw_unless(GitHash::isValid($blob), InvalidBatch::because("the put of [{$path}] has no valid blob hash"));
+        throw_unless(array_key_exists('base', $attributes), InvalidBatch::because("the put of [{$path}] has no base"));
+        throw_unless($base === null || GitHash::isValid($base), InvalidBatch::because("the put of [{$path}] has an invalid base hash"));
+        throw_unless(is_int($size) && $size >= 0, InvalidBatch::because("the put of [{$path}] has no valid size"));
+
+        return static::put($path, $blob, $base, $size);
     }
 
     /**
-     * @param  array<string, mixed>  $attributes
+     * @param  array<mixed>  $attributes
      */
-    protected static function deleteFromArray(string $path, array $attributes): static
+    protected static function deleteFromArray(string $path, array $attributes): self
     {
-        throw_unless(GitHash::isValid($attributes['base'] ?? null), InvalidBatch::because("the delete of [{$path}] has no valid base hash"));
+        $base = $attributes['base'] ?? null;
 
-        return static::delete($path, $attributes['base']);
+        throw_unless(GitHash::isValid($base), InvalidBatch::because("the delete of [{$path}] has no valid base hash"));
+
+        return static::delete($path, $base);
     }
 }

@@ -26,7 +26,7 @@ class CatchUp extends Command
 
         $outcome = CatchUpJob::dispatchSync();
 
-        if (! $outcome) {
+        if (! $outcome instanceof Outcome) {
             $this->components->info('This server is already up to date.');
 
             return self::SUCCESS;

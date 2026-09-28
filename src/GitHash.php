@@ -2,6 +2,8 @@
 
 namespace Ahinkle\FileBoomerang;
 
+use Illuminate\Support\Facades\File;
+
 class GitHash
 {
     public static function of(string $bytes): string
@@ -17,18 +19,16 @@ class GitHash
     public static function ofFile(string $absolutePath): string
     {
         $context = hash_init('sha1');
-        $stream = fopen($absolutePath, 'rb');
 
-        try {
-            hash_update($context, static::header(fstat($stream)['size']));
-            hash_update_stream($context, $stream);
-        } finally {
-            fclose($stream);
-        }
+        hash_update($context, static::header(File::size($absolutePath)));
+        hash_update_file($context, $absolutePath);
 
         return hash_final($context);
     }
 
+    /**
+     * @phpstan-assert-if-true string $hash
+     */
     public static function isValid(mixed $hash): bool
     {
         return is_string($hash) && preg_match('/^[0-9a-f]{40}$/', $hash) === 1;

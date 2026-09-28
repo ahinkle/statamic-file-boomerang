@@ -24,8 +24,8 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
     public function __construct()
     {
-        $this->onConnection(config('file-boomerang.queue.connection'));
-        $this->onQueue(config('file-boomerang.queue.name'));
+        $this->onConnection(static::configured('file-boomerang.queue.connection'));
+        $this->onQueue(static::configured('file-boomerang.queue.name'));
     }
 
     public static function dispatchAfterDebounce(): void
@@ -34,19 +34,19 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
             return;
         }
 
-        static::dispatch()->delay(now()->addSeconds(config('file-boomerang.debounce')));
+        static::dispatch()->delay(now()->addSeconds(static::debounce()));
     }
 
     public static function canWait(): bool
     {
-        $connection = config('file-boomerang.queue.connection') ?? config('queue.default');
+        $connection = static::configured('file-boomerang.queue.connection') ?? config()->string('queue.default');
 
         return config("queue.connections.{$connection}.driver") !== 'sync';
     }
 
     public function uniqueFor(): int
     {
-        return config('file-boomerang.debounce') + 120;
+        return static::debounce() + 120;
     }
 
     /**
@@ -61,21 +61,21 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
     {
         $batches = Batch::pending();
 
-        if ($batches->isEmpty()) {
+        if (! $newest = $batches->newest()) {
             return;
         }
 
-        if (! $batches->isQuiet(config('file-boomerang.debounce'))) {
-            $this->waitForQuiet($batches->newest());
+        if (! $batches->isQuiet(static::debounce())) {
+            $this->waitForQuiet($newest);
 
             return;
         }
 
-        if (LandingRequest::latest()?->covers($batches->newest())) {
+        if (LandingRequest::latest()?->covers($newest)) {
             return;
         }
 
-        $this->request($batches);
+        $this->request($batches, $newest);
     }
 
     protected function waitForQuiet(Batch $newest): void
@@ -84,10 +84,10 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
             return;
         }
 
-        static::dispatch()->delay($newest->createdAt()->addSeconds(config('file-boomerang.debounce')));
+        static::dispatch()->delay($newest->createdAt()->addSeconds(static::debounce()));
     }
 
-    protected function request(Batches $batches): void
+    protected function request(Batches $batches, Batch $newest): void
     {
         if (blank(config('file-boomerang.github.repository')) || blank(config('file-boomerang.github.token'))) {
             $this->reject('Set FILE_BOOMERANG_GITHUB_REPOSITORY and FILE_BOOMERANG_GITHUB_TOKEN so File Boomerang can ask GitHub to land the waiting batches.');
@@ -95,13 +95,13 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
             return;
         }
 
-        $response = Http::github()->post($this->dispatchesUrl(), [
+        $response = Http::github()->post("repos/{$this->repository()}/dispatches", [
             'event_type' => config('file-boomerang.github.event'),
-            'client_payload' => ['batches' => $batches->count(), 'newest' => $batches->newest()->id],
+            'client_payload' => ['batches' => $batches->count(), 'newest' => $newest->id],
         ]);
 
         match (true) {
-            $response->successful() => $this->requested($batches->newest()),
+            $response->successful() => $this->requested($newest),
             $this->isWorthRetrying($response) => $response->throw(),
             default => $this->reject($this->reasonFor($response)),
         };
@@ -135,18 +135,28 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
     protected function reasonFor(Response $response): string
     {
-        $repository = config('file-boomerang.github.repository');
-
         return match ($response->status()) {
             401 => 'GitHub did not accept FILE_BOOMERANG_GITHUB_TOKEN. It is missing, expired or revoked, so create a new fine-grained token.',
-            403 => "The GitHub token may not send events to {$repository}. Give it the Contents: Read and write permission.",
-            404 => "GitHub cannot see {$repository}. Check FILE_BOOMERANG_GITHUB_REPOSITORY and that the token has access to that repository.",
-            default => "GitHub refused the landing request with status {$response->status()}: {$response->json('message', $response->body())}",
+            403 => "The GitHub token may not send events to {$this->repository()}. Give it the Contents: Read and write permission.",
+            404 => "GitHub cannot see {$this->repository()}. Check FILE_BOOMERANG_GITHUB_REPOSITORY and that the token has access to that repository.",
+            default => "GitHub refused the landing request with status {$response->status()}: {$response->fluent()->string('message', $response->body())}",
         };
     }
 
-    protected function dispatchesUrl(): string
+    protected function repository(): string
     {
-        return 'repos/'.config('file-boomerang.github.repository').'/dispatches';
+        return config()->string('file-boomerang.github.repository');
+    }
+
+    protected static function configured(string $key): ?string
+    {
+        $value = config($key);
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    protected static function debounce(): int
+    {
+        return config()->integer('file-boomerang.debounce');
     }
 }

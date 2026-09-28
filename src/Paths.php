@@ -20,13 +20,25 @@ class Paths
     public static function tracked(): Collection
     {
         return once(fn () => static::withoutNestedRoots(
-            collect(config('file-boomerang.paths'))
+            collect(config()->array('file-boomerang.paths'))
                 ->merge(static::assetContainerRoots())
+                ->filter(fn (mixed $path) => is_string($path))
                 ->map(fn (string $path) => trim($path, '/'))
-                ->filter(fn (string $path) => $path !== '')
-                ->reject(fn (string $path) => static::isInsideGlideCache($path))
+                ->reject(fn (string $path) => blank($path) || static::isInsideGlideCache($path))
                 ->unique()
+                ->values()
         ));
+    }
+
+    public static function assetContainerRoot(Container $container): ?string
+    {
+        $disk = config("filesystems.disks.{$container->diskHandle()}");
+
+        if (! is_array($disk) || ($disk['driver'] ?? null) !== 'local' || ! is_string($disk['root'] ?? null)) {
+            return null;
+        }
+
+        return static::relative($disk['root']);
     }
 
     public static function allows(string $path): bool
@@ -92,9 +104,9 @@ class Paths
 
     protected static function isExcluded(string $path): bool
     {
-        return static::isInsideGlideCache($path) || collect(config('file-boomerang.exclude'))
+        return static::isInsideGlideCache($path) || collect(config()->array('file-boomerang.exclude'))
             ->push('.file-boomerang-*', '*/.file-boomerang-*')
-            ->contains(fn (string $pattern) => fnmatch($pattern, $path));
+            ->contains(fn (mixed $pattern) => is_string($pattern) && fnmatch($pattern, $path));
     }
 
     protected static function isInsideGlideCache(string $path): bool
@@ -109,8 +121,8 @@ class Paths
         $cache = config('statamic.assets.image_manipulation.cache');
 
         return static::relative(match (true) {
-            is_string($cache) => (string) config("filesystems.disks.{$cache}.root"),
-            (bool) $cache => (string) config('statamic.assets.image_manipulation.cache_path'),
+            is_string($cache) => config()->string("filesystems.disks.{$cache}.root", ''),
+            (bool) $cache => config()->string('statamic.assets.image_manipulation.cache_path', ''),
             default => storage_path('statamic/glide'),
         });
     }
@@ -121,14 +133,13 @@ class Paths
     protected static function assetContainerRoots(): Collection
     {
         if (! config('file-boomerang.local_asset_containers')) {
-            return collect();
+            return new Collection;
         }
 
         return AssetContainer::all()
-            ->map(fn (Container $container) => config("filesystems.disks.{$container->diskHandle()}"))
-            ->filter(fn (?array $disk) => ($disk['driver'] ?? null) === 'local')
-            ->map(fn (array $disk) => static::relative((string) ($disk['root'] ?? '')))
-            ->filter()
+            ->whereInstanceOf(Container::class)
+            ->map(fn (Container $container) => static::assetContainerRoot($container))
+            ->filter(fn (?string $root) => $root !== null)
             ->values();
     }
 

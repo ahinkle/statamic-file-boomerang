@@ -31,7 +31,7 @@ class Push extends Command
         $batch = MailChanges::dispatchSync();
 
         match (true) {
-            $batch !== null => $this->mailed($batch),
+            $batch instanceof Batch => $this->mailed($batch),
             ! $hasBaseline => $this->components->warn('This server had no baseline, so File Boomerang recorded one and mailed nothing.'),
             default => $this->components->info('Nothing has changed since the last push.'),
         };

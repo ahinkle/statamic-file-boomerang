@@ -22,9 +22,9 @@ readonly class LandingResult
         public ?string $conflictsUrl = null,
     ) {}
 
-    public static function from(Outcome $outcome, ?string $sha = null, ?string $conflictsUrl = null): static
+    public static function from(Outcome $outcome, ?string $sha = null, ?string $conflictsUrl = null): self
     {
-        return new static($outcome->batchIds, $outcome->paths(), $outcome->conflicts, $outcome->skipped, $sha, $conflictsUrl);
+        return new self($outcome->batchIds, $outcome->paths(), $outcome->conflicts, $outcome->skipped, $sha, $conflictsUrl);
     }
 
     public function isEmpty(): bool
@@ -37,6 +37,9 @@ readonly class LandingResult
         return $this->sha === null;
     }
 
+    /**
+     * @phpstan-assert-if-true !null $this->sha
+     */
     public function landed(): bool
     {
         return ! $this->isDryRun() && $this->paths->isNotEmpty();

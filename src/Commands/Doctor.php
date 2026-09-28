@@ -9,6 +9,7 @@ use Ahinkle\FileBoomerang\Paths;
 use Closure;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Statamic\Console\RunsInPlease;
@@ -70,7 +71,7 @@ class Doctor extends Command
         return collect($checks)
             ->map(fn (Closure $check) => rescue($check, fn (Throwable $e) => $e->getMessage(), report: false))
             ->each(fn (?string $fix, string $name) => $this->report($name, $fix, $label))
-            ->filter();
+            ->reject(fn (?string $fix) => $fix === null);
     }
 
     protected function report(string $name, ?string $fix, string $label): void
@@ -121,11 +122,14 @@ class Doctor extends Command
 
     protected function githubAccessProblem(): ?string
     {
-        $repository = config('file-boomerang.github.repository');
-        $branch = config('file-boomerang.github.branch');
+        if ($this->githubSettingsProblem()) {
+            return 'Set the repository and token first.';
+        }
+
+        $repository = config()->string('file-boomerang.github.repository');
+        $branch = config()->string('file-boomerang.github.branch');
 
         return match (true) {
-            $this->githubSettingsProblem() !== null => 'Set the repository and token first.',
             Http::github()->get("repos/{$repository}")->failed() => "The token cannot see {$repository}. Give it access to that repository.",
             Http::github()->get("repos/{$repository}/contents/.github/workflows/file-boomerang.yml", ['ref' => $branch])->failed() => "There is no .github/workflows/file-boomerang.yml on {$branch}. Run \"php artisan boomerang:install\" and push it.",
             default => null,
@@ -134,9 +138,9 @@ class Doctor extends Command
 
     protected function cacheProblem(): ?string
     {
-        $driver = config('cache.stores.'.config('cache.default').'.driver');
+        $driver = config('cache.stores.'.Cache::getDefaultDriver().'.driver');
 
-        if (! RequestLanding::canWait() || ! in_array($driver, ['file', 'array'])) {
+        if (! RequestLanding::canWait() || ! in_array($driver, ['file', 'array'], true)) {
             return null;
         }
 

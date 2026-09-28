@@ -18,7 +18,7 @@ class Land extends Command
 
     public function handle(): int
     {
-        $landing = Landing::make()->onto(config('file-boomerang.github.branch'));
+        $landing = Landing::make()->onto(config()->string('file-boomerang.github.branch'));
 
         try {
             $result = $this->option('dry-run') ? $landing->dryRun() : $landing->land();

@@ -3,13 +3,14 @@
 namespace Ahinkle\FileBoomerang\Jobs;
 
 use Ahinkle\FileBoomerang\Batch;
-use Ahinkle\FileBoomerang\Batches;
 use Ahinkle\FileBoomerang\Divergence;
 use Ahinkle\FileBoomerang\Manifest;
 use Ahinkle\FileBoomerang\Outcome;
+use Ahinkle\FileBoomerang\Paths;
 use Ahinkle\FileBoomerang\WorkingTree;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Statamic\Assets\AssetContainer as Container;
 use Statamic\Facades\AssetContainer;
@@ -22,28 +23,24 @@ class CatchUp
 
     public function handle(): ?Outcome
     {
-        return Manifest::lock(function () {
-            $manifest = Manifest::current() ?? tap(Manifest::seed())->save();
-
-            $batches = Batch::after($manifest->cursor);
-
-            if ($batches->isEmpty()) {
-                return null;
-            }
-
-            return $this->apply($batches, $manifest);
-        });
+        return Manifest::lock(fn () => $this->catchUp(Manifest::current() ?? tap(Manifest::seed())->save()));
     }
 
-    protected function apply(Batches $batches, Manifest $manifest): Outcome
+    protected function catchUp(Manifest $manifest): ?Outcome
     {
+        $batches = Batch::after($manifest->cursor);
+
+        if (! $newest = $batches->newest()) {
+            return null;
+        }
+
         $outcome = $batches->applyTo(new WorkingTree($manifest), Divergence::Skip);
 
         $outcome->writeTo($outcome->tree);
 
-        $manifest->withChanges($outcome->changes, $batches->newest()->id)->save();
+        $manifest->withChanges($outcome->changes, $newest->id)->save();
 
-        $this->refreshStatamic($outcome->paths()->map(fn (string $path) => base_path($path)));
+        $this->refreshStatamic($outcome->paths());
 
         return $outcome;
     }
@@ -53,15 +50,13 @@ class CatchUp
      */
     protected function refreshStatamic(Collection $paths): void
     {
-        if ($paths->contains(fn (string $path) => $this->isInStache($path))) {
+        if ($paths->contains(fn (string $path) => $this->isInStache(base_path($path)))) {
             Stache::clear();
         }
 
         AssetContainer::all()
-            ->filter(fn (Container $container) => config("filesystems.disks.{$container->diskHandle()}.driver") === 'local')
-            ->each(fn (Container $container) => $this->refreshAssets(
-                $container, $paths->filter(fn (string $path) => str_starts_with($path, $container->diskPath().'/'))
-            ));
+            ->whereInstanceOf(Container::class)
+            ->each(fn (Container $container) => $this->refreshAssets($container, $paths));
     }
 
     protected function isInStache(string $path): bool
@@ -77,26 +72,32 @@ class CatchUp
      */
     protected function refreshAssets(Container $container, Collection $paths): void
     {
-        if ($paths->isEmpty()) {
+        if (! $root = Paths::assetContainerRoot($container)) {
             return;
         }
 
-        $paths
-            ->map(fn (string $path) => Str::after($path, $container->diskPath().'/'))
-            ->each(fn (string $path) => $this->refreshAsset($container, $path));
+        $files = $paths
+            ->filter(fn (string $path) => str_starts_with($path, "{$root}/"))
+            ->map(fn (string $path) => Str::after($path, "{$root}/"));
+
+        if ($files->isEmpty()) {
+            return;
+        }
+
+        $files->each(fn (string $path) => $this->refreshAsset($container, $path, base_path("{$root}/{$path}")));
 
         $container->contents()->save();
 
         Stache::store("assets::{$container->handle()}")->clear();
     }
 
-    protected function refreshAsset(Container $container, string $path): void
+    protected function refreshAsset(Container $container, string $path, string $absolutePath): void
     {
-        $asset = $container->makeAsset(Str::replaceMatches('#(^|/)\.meta/([^/]+)\.yaml$#', '$1$2', $path));
+        $asset = $container->makeAsset(Str::of($path)->replaceMatches('#(^|/)\.meta/([^/]+)\.yaml$#', '$1$2')->value());
 
         $asset->cacheStore()->forget($asset->metaCacheKey());
 
-        if ($container->disk()->exists($path)) {
+        if (File::exists($absolutePath)) {
             $container->contents()->add($path);
 
             return;

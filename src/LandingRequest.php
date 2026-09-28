@@ -3,37 +3,38 @@
 namespace Ahinkle\FileBoomerang;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Arr;
 
 readonly class LandingRequest
 {
     public function __construct(public string $newest, public CarbonImmutable $requestedAt) {}
 
-    public static function latest(): ?static
+    public static function latest(): ?self
     {
         if (! Mailbox::disk()->fileExists(static::key())) {
             return null;
         }
 
-        return rescue(fn () => static::fromArray(Mailbox::disk()->json(static::key())), report: false);
+        return rescue(fn () => static::fromArray(Mailbox::disk()->json(static::key()) ?? []), report: false);
     }
 
-    public static function record(Batch $newest): static
+    public static function record(Batch $newest): self
     {
-        return tap(new static($newest->id, now()->toImmutable()), fn (LandingRequest $request) => $request->save());
+        return tap(new self($newest->id, now()->toImmutable()), fn (LandingRequest $request) => $request->save());
     }
 
     public function covers(Batch $batch): bool
     {
         return $this->newest === $batch->id
-            && $this->requestedAt->addMinutes(config('file-boomerang.landing.redispatch_after'))->isFuture();
+            && $this->requestedAt->addMinutes(config()->integer('file-boomerang.landing.redispatch_after'))->isFuture();
     }
 
     /**
-     * @param  array{newest: string, requested_at: string}  $attributes
+     * @param  array<mixed>  $attributes
      */
-    protected static function fromArray(array $attributes): static
+    protected static function fromArray(array $attributes): self
     {
-        return new static($attributes['newest'], CarbonImmutable::parse($attributes['requested_at']));
+        return new self(Arr::string($attributes, 'newest'), CarbonImmutable::parse(Arr::string($attributes, 'requested_at')));
     }
 
     protected function save(): void
