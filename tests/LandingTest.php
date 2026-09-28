@@ -13,23 +13,6 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
-function remote(): string
-{
-    return dirname(base_path()).'/remote.git';
-}
-
-function onRemote(string ...$arguments): string
-{
-    return trim(Process::path(remote())->run(['git', ...$arguments])->throw()->output());
-}
-
-function fileOnRemote(string $path, string $branch = 'main'): ?string
-{
-    $result = Process::path(remote())->run(['git', 'show', "{$branch}:{$path}"]);
-
-    return $result->successful() ? $result->output() : null;
-}
-
 function anotherClone(string ...$arguments): string
 {
     $clone = dirname(base_path()).'/another-clone';
@@ -95,12 +78,8 @@ beforeEach(function () use ($home) {
     Http::preventStrayRequests();
 
     $this->writeFile('content/pages/home.md', $home);
-    $this->git('init', '--quiet', '--initial-branch=main');
-    $this->git('add', '--all');
-    $this->git('commit', '--quiet', '-m', 'Initial commit');
-    $this->git('init', '--quiet', '--bare', '--initial-branch=main', remote());
-    $this->git('remote', 'add', 'origin', remote());
-    $this->git('push', '--quiet', '--set-upstream', 'origin', 'main');
+
+    pushToRemote();
 });
 
 afterEach(function () {

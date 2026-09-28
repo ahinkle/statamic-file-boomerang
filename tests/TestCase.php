@@ -5,10 +5,13 @@ namespace Ahinkle\FileBoomerang\Tests;
 use Ahinkle\FileBoomerang\Blob;
 use Ahinkle\FileBoomerang\Mailbox;
 use Ahinkle\FileBoomerang\ServiceProvider;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Filesystem\Filesystem as Files;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
+use Psr\Http\Message\RequestInterface;
 use Statamic\Testing\AddonTestCase;
 
 use function Orchestra\Testbench\default_skeleton_path;
@@ -27,6 +30,7 @@ abstract class TestCase extends AddonTestCase
 
         parent::setUp();
 
+        $this->keepStatamicOffline();
         $this->useLocalMailbox();
     }
 
@@ -62,6 +66,13 @@ abstract class TestCase extends AddonTestCase
         ])->each(fn (string $directory, string $store) => $app['config']->set(
             "statamic.stache.stores.{$store}.directory", base_path($directory)
         ));
+    }
+
+    protected function keepStatamicOffline(): void
+    {
+        $this->app->instance(Client::class, new Client([
+            'handler' => fn (RequestInterface $request) => throw new ConnectException('File Boomerang tests run offline.', $request),
+        ]));
     }
 
     protected function useLocalMailbox(): void
