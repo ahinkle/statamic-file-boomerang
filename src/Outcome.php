@@ -108,10 +108,7 @@ readonly class Outcome
 
     public function writeTo(Tree $tree): void
     {
-        $this->changes->each(fn (Change $change) => match ($change->type) {
-            ChangeType::Put => $tree->put($change->path, $change->blob),
-            ChangeType::Delete => $tree->delete($change->path),
-        });
+        $this->changes->each->writeTo($tree);
 
         $this->merged->each(fn (string $contents, string $path) => $tree->write($path, $contents));
     }

@@ -12,27 +12,6 @@ use Ahinkle\FileBoomerang\WorkingTree;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 
-function edit(string $path, string $contents, ?string $from = null): Change
-{
-    if ($from !== null) {
-        test()->storeBlob($from);
-    }
-
-    return Change::put($path, test()->storeBlob($contents), $from === null ? null : GitHash::of($from), strlen($contents));
-}
-
-function removal(string $path, string $from): Change
-{
-    return Change::delete($path, GitHash::of($from));
-}
-
-function mailed(Change $change, ?Editor $editor = null): Batch
-{
-    Carbon::setTestNow(now()->addSecond());
-
-    return Batch::record(collect([$change]), $editor);
-}
-
 function land(Divergence $divergence = Divergence::Merge): Outcome
 {
     return tap(Batch::pending()->applyTo(new WorkingTree, $divergence))->writeTo(new WorkingTree);

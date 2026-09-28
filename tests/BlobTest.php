@@ -26,7 +26,7 @@ it('never rewrites a blob that is already in the mailbox', function () {
     $this->mailbox()->put("file-boomerang/blobs/{$hash}", 'already here');
 
     expect(Blob::store($path))->toBe($hash)
-        ->and(Blob::contents($hash))->toBe('already here');
+        ->and($this->mailbox()->get("file-boomerang/blobs/{$hash}"))->toBe('already here');
 });
 
 it('copies a blob into place', function () {
@@ -47,6 +47,13 @@ it('refuses a corrupt blob and leaves the file as it was', function () {
 
     expect(File::get($path))->toBe('The old notes')
         ->and(File::files(dirname($path)))->toHaveCount(1);
+});
+
+it('refuses to read a corrupt blob', function () {
+    $hash = $this->storeBlob('The real notes');
+    $this->mailbox()->put("file-boomerang/blobs/{$hash}", 'Tampered notes');
+
+    expect(fn () => Blob::contents($hash))->toThrow(CorruptBlob::class);
 });
 
 it('prunes only unreferenced blobs past the grace period', function () {
