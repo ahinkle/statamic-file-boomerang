@@ -7,6 +7,7 @@ use Ahinkle\FileBoomerang\Manifest;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
+use Statamic\Facades\User;
 use Symfony\Component\HttpFoundation\Response;
 
 class CatchUpBeforeEditing
@@ -24,6 +25,7 @@ class CatchUpBeforeEditing
     {
         return config('file-boomerang.enabled')
             && config('file-boomerang.catch_up.enabled')
+            && User::current()
             && ! $this->caughtUpRecently();
     }
 

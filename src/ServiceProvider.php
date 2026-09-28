@@ -5,7 +5,9 @@ namespace Ahinkle\FileBoomerang;
 use Ahinkle\FileBoomerang\Http\Middleware\CatchUpBeforeEditing;
 use Ahinkle\FileBoomerang\Listeners\RecordContentChanges;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Http;
 use Statamic\Providers\AddonServiceProvider;
@@ -26,6 +28,8 @@ class ServiceProvider extends AddonServiceProvider
 
     public function bootAddon(): void
     {
+        $this->app->make(Kernel::class)->addToMiddlewarePriorityBefore(SubstituteBindings::class, CatchUpBeforeEditing::class);
+
         Http::macro('github', function (): PendingRequest {
             $token = Env::get('GITHUB_ACTIONS')
                 ? Env::get('GITHUB_TOKEN')
