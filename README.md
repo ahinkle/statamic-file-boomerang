@@ -57,6 +57,12 @@ php artisan boomerang:install
 
 `boomerang:install` publishes `config/file-boomerang.php`, writes `.github/workflows/file-boomerang.yml` and prints what is left to set up. Commit the workflow to your default branch. GitHub only runs `repository_dispatch` workflows from there.
 
+Each server keeps its baseline and lock in `storage/framework`, so add this line to your `.gitignore`:
+
+```
+/storage/framework/file-boomerang*
+```
+
 Every command also works through `php please`.
 
 ## Laravel Cloud recipe

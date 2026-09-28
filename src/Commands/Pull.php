@@ -58,6 +58,12 @@ class Pull extends Command
 
     protected function pulled(Outcome $outcome): void
     {
+        if ($outcome->batchIds->isEmpty()) {
+            $this->components->info('Nothing is waiting in the mailbox. Recorded the baseline.');
+
+            return;
+        }
+
         $count = $outcome->paths()->count();
 
         $this->components->info("Applied {$count} ".Str::plural('file', $count).' from '.$outcome->batchIds->count().' waiting '.Str::plural('batch', $outcome->batchIds->count()).' and recorded the baseline.');
