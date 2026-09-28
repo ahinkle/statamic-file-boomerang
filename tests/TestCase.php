@@ -7,6 +7,7 @@ use Ahinkle\FileBoomerang\Mailbox;
 use Ahinkle\FileBoomerang\ServiceProvider;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Filesystem\Filesystem as Files;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Statamic\Testing\AddonTestCase;
 
@@ -74,12 +75,12 @@ abstract class TestCase extends AddonTestCase
         ]);
     }
 
-    protected function mailbox(): Filesystem
+    public function mailbox(): Filesystem
     {
         return Mailbox::disk();
     }
 
-    protected function writeFile(string $path, string $contents, ?int $modifiedAt = null): string
+    public function writeFile(string $path, string $contents, ?int $modifiedAt = null): string
     {
         (new Files)->ensureDirectoryExists(dirname(base_path($path)));
 
@@ -90,12 +91,26 @@ abstract class TestCase extends AddonTestCase
         return base_path($path);
     }
 
-    protected function storeBlob(string $contents): string
+    public function storeBlob(string $contents): string
     {
         $path = static::$sandbox.'/'.Str::random(16);
 
         file_put_contents($path, $contents);
 
         return tap(Blob::store($path), fn () => unlink($path));
+    }
+
+    public function git(string ...$arguments): string
+    {
+        return Process::path(base_path())
+            ->env([
+                'GIT_AUTHOR_NAME' => 'Developer',
+                'GIT_AUTHOR_EMAIL' => 'developer@example.com',
+                'GIT_COMMITTER_NAME' => 'Developer',
+                'GIT_COMMITTER_EMAIL' => 'developer@example.com',
+            ])
+            ->run(['git', ...$arguments])
+            ->throw()
+            ->output();
     }
 }
