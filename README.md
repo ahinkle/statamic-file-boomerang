@@ -139,7 +139,7 @@ Commits pushed by a workflow do not start your other workflows. If you want your
 
 ## Other hosts
 
-Anything that can run the scheduler, reach an S3 compatible bucket and deploy from Git will do. Point the mailbox at any bucket with the four variables above (plus `FILE_BOOMERANG_REGION` and `FILE_BOOMERANG_PATH_STYLE` if your provider needs them), or at a disk you already have in `config/filesystems.php` with `FILE_BOOMERANG_DISK`. Run `php artisan boomerang:pull` at the end of your build. If your host does not deploy commits pushed by GitHub Actions, add its deploy hook URL as the `FILE_BOOMERANG_DEPLOY_HOOK` repository secret; `{sha}` in the URL is replaced with the landed commit.
+Anything that can run the scheduler, reach an S3 compatible bucket and deploy from Git will do. Point the mailbox at any bucket with the four variables above, or at a disk you already have in `config/filesystems.php` with `FILE_BOOMERANG_DISK`. If your provider needs `FILE_BOOMERANG_REGION` or `FILE_BOOMERANG_PATH_STYLE`, or you change `FILE_BOOMERANG_PREFIX`, set them on the host and as repository variables (**Settings > Secrets and variables > Actions > Variables**) so the workflow reads the same mailbox. Run `php artisan boomerang:pull` at the end of your build. If your host does not deploy commits pushed by GitHub Actions, add its deploy hook URL as the `FILE_BOOMERANG_DEPLOY_HOOK` repository secret; `{sha}` in the URL is replaced with the landed commit.
 
 If your host runs a hook when a server boots instead of baking files at build time, `php artisan boomerang:catch-up` applies what other servers mailed since the last deploy.
 
