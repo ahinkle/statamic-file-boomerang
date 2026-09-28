@@ -1,0 +1,52 @@
+name: File Boomerang
+
+on:
+  repository_dispatch:
+    types: [file-boomerang]
+  workflow_dispatch:
+
+concurrency:
+  group: file-boomerang
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  land:
+    name: Land control panel edits
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      FILE_BOOMERANG_BUCKET: ${{ secrets.FILE_BOOMERANG_BUCKET }}
+      FILE_BOOMERANG_ENDPOINT: ${{ secrets.FILE_BOOMERANG_ENDPOINT }}
+      FILE_BOOMERANG_ACCESS_KEY_ID: ${{ secrets.FILE_BOOMERANG_ACCESS_KEY_ID }}
+      FILE_BOOMERANG_SECRET_ACCESS_KEY: ${{ secrets.FILE_BOOMERANG_SECRET_ACCESS_KEY }}
+      FILE_BOOMERANG_DEPLOY_HOOK: ${{ secrets.FILE_BOOMERANG_DEPLOY_HOOK }}
+      FILE_BOOMERANG_GITHUB_REPOSITORY: ${{ github.repository }}
+      FILE_BOOMERANG_GITHUB_BRANCH: '{{ branch }}'
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: '{{ branch }}'
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '{{ php }}'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Land
+        run: php artisan boomerang:land
