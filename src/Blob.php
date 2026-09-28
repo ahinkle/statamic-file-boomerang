@@ -29,7 +29,13 @@ class Blob
 
     public static function contents(string $hash): string
     {
-        return Mailbox::disk()->get(static::path($hash));
+        $bytes = Mailbox::disk()->get(static::path($hash));
+
+        if (($actual = GitHash::of($bytes)) !== $hash) {
+            throw new CorruptBlob($hash, $actual);
+        }
+
+        return $bytes;
     }
 
     public static function copyTo(string $hash, string $absolutePath): void

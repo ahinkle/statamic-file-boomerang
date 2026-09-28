@@ -27,3 +27,9 @@ it('refuses a mailbox disk that does not exist', function () {
 
     Mailbox::disk();
 })->throws(InvalidArgumentException::class, 'The mailbox disk [nowhere] is not defined');
+
+it('says which setting is missing when there is no bucket', function () {
+    config(['file-boomerang.mailbox.disk' => null, 'file-boomerang.mailbox.bucket' => null]);
+
+    Mailbox::disk();
+})->throws(InvalidArgumentException::class, 'The mailbox has no bucket. Set FILE_BOOMERANG_BUCKET');

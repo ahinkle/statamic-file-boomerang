@@ -49,6 +49,14 @@ readonly class Change
         return $this->isPut() ? Blob::contents($this->blob) : null;
     }
 
+    public function writeTo(Tree $tree): void
+    {
+        match ($this->type) {
+            ChangeType::Put => $tree->put($this->path, $this->blob),
+            ChangeType::Delete => $tree->delete($this->path),
+        };
+    }
+
     /**
      * @return array{path: string, type: string, blob?: string, base: ?string, size?: int}
      */

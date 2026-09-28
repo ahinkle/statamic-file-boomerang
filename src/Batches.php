@@ -45,6 +45,14 @@ class Batches extends Collection
             ->values();
     }
 
+    /**
+     * @param  Collection<int, string>  $paths
+     */
+    public function touching(Collection $paths): static
+    {
+        return $this->filter(fn (Batch $batch) => $batch->changes->pluck('path')->intersect($paths)->isNotEmpty())->values();
+    }
+
     public function applyTo(Tree $tree, Divergence $divergence): Outcome
     {
         return tap(new Outcome($tree, $this->toBase()->pluck('id')), function (Outcome $outcome) use ($divergence) {
