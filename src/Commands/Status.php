@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
 use Statamic\Console\RunsInPlease;
 use Throwable;
 
-class StatusCommand extends Command
+class Status extends Command
 {
     use RunsInPlease;
 

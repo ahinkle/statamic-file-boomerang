@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 use Statamic\Console\RunsInPlease;
 use Throwable;
 
-class DoctorCommand extends Command
+class Doctor extends Command
 {
     use RunsInPlease;
 

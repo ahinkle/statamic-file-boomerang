@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Statamic\Console\RunsInPlease;
 
-class DispatchCommand extends Command
+class Dispatch extends Command
 {
     use RunsInPlease;
 

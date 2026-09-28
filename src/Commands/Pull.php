@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 use Statamic\Console\RunsInPlease;
 use Throwable;
 
-class PullCommand extends Command
+class Pull extends Command
 {
     use RunsInPlease;
 
