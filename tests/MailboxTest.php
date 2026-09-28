@@ -4,10 +4,10 @@ use Ahinkle\FileBoomerang\Mailbox;
 use League\Flysystem\UnableToReadFile;
 
 it('keeps every key under the prefix', function () {
-    config(['file-boomerang.mailbox.prefix' => '/sites/sccc/']);
+    config(['file-boomerang.mailbox.prefix' => '/sites/acme/']);
 
-    expect(Mailbox::path('batches', '01J8.json'))->toBe('sites/sccc/batches/01J8.json')
-        ->and(Mailbox::path())->toBe('sites/sccc');
+    expect(Mailbox::path('batches', '01J8.json'))->toBe('sites/acme/batches/01J8.json')
+        ->and(Mailbox::path())->toBe('sites/acme');
 });
 
 it('works without a prefix', function () {

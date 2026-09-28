@@ -38,7 +38,7 @@ beforeEach(function () {
 
     config([
         'file-boomerang.enabled' => true,
-        'file-boomerang.github.repository' => 'ahinkle/sccc.org',
+        'file-boomerang.github.repository' => 'acme/website',
     ]);
 
     Http::preventStrayRequests();

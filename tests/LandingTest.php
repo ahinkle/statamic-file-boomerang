@@ -74,7 +74,7 @@ $andy = new Editor('Andy Hinkle', 'andy@example.com');
 $greg = new Editor('Greg Davis', 'greg@example.com');
 
 beforeEach(function () use ($home) {
-    config(['file-boomerang.github.repository' => 'ahinkle/sccc.org']);
+    config(['file-boomerang.github.repository' => 'acme/website']);
 
     Http::preventStrayRequests();
 
@@ -189,7 +189,7 @@ it('gives up and keeps every batch when the push keeps failing', function () use
 });
 
 it('opens a pull request for edits that conflict with the branch', function () use ($home, $andy) {
-    Http::fake(['api.github.com/repos/ahinkle/sccc.org/pulls' => Http::response(['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7'], 201)]);
+    Http::fake(['api.github.com/repos/acme/website/pulls' => Http::response(['html_url' => 'https://github.com/acme/website/pull/7'], 201)]);
     pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
     $batch = mailed(edit('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 10\n", from: $home), $andy);
 
@@ -199,7 +199,7 @@ it('opens a pull request for edits that conflict with the branch', function () u
         ->and(fileOnRemote('content/pages/home.md', "file-boomerang/conflict-{$batch->id}"))->toBe("title: Welcome\nsummary: Our church\nbody: Sunday at 10\n")
         ->and(onRemote('log', '-1', '--format=%an %s', "file-boomerang/conflict-{$batch->id}"))->toBe('Andy Hinkle Control panel edits that conflict with main')
         ->and(onRemote('rev-parse', "file-boomerang/conflict-{$batch->id}^"))->toBe(onRemote('rev-parse', 'main'))
-        ->and($result->conflictsUrl)->toBe('https://github.com/ahinkle/sccc.org/pull/7')
+        ->and($result->conflictsUrl)->toBe('https://github.com/acme/website/pull/7')
         ->and(batchesInMailbox())->toBeEmpty();
 
     Http::assertSent(fn (Request $request) => $request['title'] === 'Control panel edits that conflict with main'
@@ -210,33 +210,33 @@ it('opens a pull request for edits that conflict with the branch', function () u
 
 it('opens an issue when github actions may not open pull requests', function () use ($home) {
     Http::fake([
-        'api.github.com/repos/ahinkle/sccc.org/pulls' => Http::response(['message' => 'GitHub Actions is not permitted to create or approve pull requests.'], 403),
-        'api.github.com/repos/ahinkle/sccc.org/issues' => Http::response(['html_url' => 'https://github.com/ahinkle/sccc.org/issues/8'], 201),
+        'api.github.com/repos/acme/website/pulls' => Http::response(['message' => 'GitHub Actions is not permitted to create or approve pull requests.'], 403),
+        'api.github.com/repos/acme/website/issues' => Http::response(['html_url' => 'https://github.com/acme/website/issues/8'], 201),
     ]);
     pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
     $batch = mailed(removal('content/pages/home.md', from: $home));
 
     $result = landing();
 
-    expect($result->conflictsUrl)->toBe('https://github.com/ahinkle/sccc.org/issues/8')
+    expect($result->conflictsUrl)->toBe('https://github.com/acme/website/issues/8')
         ->and(fileOnRemote('content/pages/home.md', "file-boomerang/conflict-{$batch->id}"))->toBeNull()
         ->and(batchesInMailbox())->toBeEmpty();
 
     Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/issues')
-        && str_contains($request['body'], "https://github.com/ahinkle/sccc.org/compare/main...file-boomerang/conflict-{$batch->id}?expand=1")
+        && str_contains($request['body'], "https://github.com/acme/website/compare/main...file-boomerang/conflict-{$batch->id}?expand=1")
         && str_contains($request['body'], '| `content/pages/home.md` (deleted) | System |'));
 });
 
 it('empties the mailbox and fails loudly when github refuses both a pull request and an issue', function () use ($home) {
     Http::fake([
-        'api.github.com/repos/ahinkle/sccc.org/pulls' => Http::response(['message' => 'Resource not accessible by integration'], 403),
-        'api.github.com/repos/ahinkle/sccc.org/issues' => Http::response(['message' => 'Issues are disabled for this repo'], 410),
+        'api.github.com/repos/acme/website/pulls' => Http::response(['message' => 'Resource not accessible by integration'], 403),
+        'api.github.com/repos/acme/website/issues' => Http::response(['message' => 'Issues are disabled for this repo'], 410),
     ]);
     pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
     $first = mailed(edit('content/pages/about.md', 'About us'));
     mailed(edit('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 10\n", from: $home));
 
-    expect(fn () => landing())->toThrow(LandingRejected::class, "https://github.com/ahinkle/sccc.org/compare/main...file-boomerang/conflict-{$first->id}?expand=1");
+    expect(fn () => landing())->toThrow(LandingRejected::class, "https://github.com/acme/website/compare/main...file-boomerang/conflict-{$first->id}?expand=1");
 
     expect(fileOnRemote('content/pages/about.md'))->toBe('About us')
         ->and(fileOnRemote('content/pages/home.md', "file-boomerang/conflict-{$first->id}"))->toBe("title: Welcome\nsummary: Our church\nbody: Sunday at 10\n")
@@ -252,10 +252,10 @@ it('empties the mailbox and fails loudly when github refuses both a pull request
 
 it('lands again after a run that stopped before emptying the mailbox', function () use ($home, $andy) {
     Http::fake([
-        'api.github.com/repos/ahinkle/sccc.org/pulls' => Http::sequence()
-            ->push(['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7'], 201)
+        'api.github.com/repos/acme/website/pulls' => Http::sequence()
+            ->push(['html_url' => 'https://github.com/acme/website/pull/7'], 201)
             ->push(['message' => 'A pull request already exists for ahinkle:file-boomerang/conflict.'], 422),
-        'api.github.com/repos/ahinkle/sccc.org/pulls?*' => Http::response([['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7']]),
+        'api.github.com/repos/acme/website/pulls?*' => Http::response([['html_url' => 'https://github.com/acme/website/pull/7']]),
     ]);
     pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
     $this->git('pull', '--quiet');
@@ -269,7 +269,7 @@ it('lands again after a run that stopped before emptying the mailbox', function 
     $result = landing();
 
     expect(onRemote('rev-parse', 'main'))->toBe($landed)
-        ->and($result->conflictsUrl)->toBe('https://github.com/ahinkle/sccc.org/pull/7')
+        ->and($result->conflictsUrl)->toBe('https://github.com/acme/website/pull/7')
         ->and(fileOnRemote('content/pages/home.md', "file-boomerang/conflict-{$batch->id}"))->toBe("title: Welcome\nsummary: Our church\nbody: Sunday at 10\n")
         ->and(batchesInMailbox())->toBeEmpty();
 
@@ -277,7 +277,7 @@ it('lands again after a run that stopped before emptying the mailbox', function 
 });
 
 it('keeps a renamed page off the branch when the old page changed in git', function () use ($home) {
-    Http::fake(['api.github.com/repos/ahinkle/sccc.org/pulls' => Http::response(['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7'], 201)]);
+    Http::fake(['api.github.com/repos/acme/website/pulls' => Http::response(['html_url' => 'https://github.com/acme/website/pull/7'], 201)]);
     pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
     $renamed = Batch::record(collect([removal('content/pages/home.md', from: $home), edit('content/pages/welcome.md', $home)]), null);
     $before = onRemote('rev-parse', 'main');
@@ -290,7 +290,7 @@ it('keeps a renamed page off the branch when the old page changed in git', funct
 });
 
 it('keeps the old page on the branch when a rename lands on a page git already has', function () use ($home) {
-    Http::fake(['api.github.com/repos/ahinkle/sccc.org/pulls' => Http::response(['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7'], 201)]);
+    Http::fake(['api.github.com/repos/acme/website/pulls' => Http::response(['html_url' => 'https://github.com/acme/website/pull/7'], 201)]);
     pushFromAnotherClone('content/pages/welcome.md', 'A different welcome page');
     Batch::record(collect([removal('content/pages/home.md', from: $home), edit('content/pages/welcome.md', $home)]), null);
 
@@ -304,7 +304,7 @@ it('deletes only the batches it landed', function () use ($home) {
     Http::fake(function () {
         mailed(edit('content/pages/late.md', 'Saved while landing'));
 
-        return Http::response(['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7'], 201);
+        return Http::response(['html_url' => 'https://github.com/acme/website/pull/7'], 201);
     });
     pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
     mailed(edit('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 10\n", from: $home));
@@ -450,7 +450,7 @@ it('deploys, runs the other workflows and reports to github actions after landin
     $result = landing();
 
     Http::assertSent(fn (Request $request) => $request->url() === "https://cloud.example.com/deploy?commit_hash={$result->sha}");
-    Http::assertSent(fn (Request $request) => $request->url() === 'https://api.github.com/repos/ahinkle/sccc.org/actions/workflows/tests.yml/dispatches'
+    Http::assertSent(fn (Request $request) => $request->url() === 'https://api.github.com/repos/acme/website/actions/workflows/tests.yml/dispatches'
         && $request['ref'] === 'main');
 
     expect(File::get(dirname(base_path()).'/github-output'))->toBe("landed=true\nsha={$result->sha}\nconflicts=0\n")
@@ -469,7 +469,7 @@ it('never prints the deploy hook when it cannot be reached', function () {
 });
 
 it('keeps editor names from adding links or mentions to the conflict report', function () use ($home) {
-    Http::fake(['api.github.com/repos/ahinkle/sccc.org/pulls' => Http::response(['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7'], 201)]);
+    Http::fake(['api.github.com/repos/acme/website/pulls' => Http::response(['html_url' => 'https://github.com/acme/website/pull/7'], 201)]);
     pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
     mailed(edit('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 10\n", from: $home), new Editor('[Reset](https://evil.example) @org/team', 'mallory@example.com'));
 

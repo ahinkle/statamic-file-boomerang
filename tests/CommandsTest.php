@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Queue;
 beforeEach(function () {
     config([
         'file-boomerang.enabled' => true,
-        'file-boomerang.github.repository' => 'ahinkle/sccc.org',
+        'file-boomerang.github.repository' => 'acme/website',
         'file-boomerang.github.token' => 'github_pat_owner',
     ]);
 
