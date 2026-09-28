@@ -42,7 +42,7 @@ class DoctorCommand extends Command
         return [
             'File Boomerang is enabled' => fn () => config('file-boomerang.enabled') ? null : 'Set FILE_BOOMERANG_ENABLED=true on the host.',
             'The mailbox can be written, read and cleaned up' => $this->mailboxProblem(...),
-            'This server has a baseline' => fn () => Manifest::current() ? null : 'Add "php artisan boomerang:pull" to the end of your build command.',
+            'This server has a baseline' => fn () => Manifest::current() ? null : 'Add "php artisan boomerang:pull" to your build, right after composer install.',
             $this->trackedPathsName() => fn () => $this->existingTrackedPaths()->isNotEmpty() ? null : 'None of the tracked paths exist. Check the paths in config/file-boomerang.php.',
             'The GitHub repository and token are set' => $this->githubSettingsProblem(...),
             'The token can see the repository and its workflow' => $this->githubAccessProblem(...),

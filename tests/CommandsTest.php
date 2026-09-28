@@ -100,7 +100,7 @@ it('tells the owner how to fix what is missing', function () {
     File::delete(config('file-boomerang.manifest'));
 
     $this->artisan('boomerang:doctor')
-        ->expectsOutputToContain('Add "php artisan boomerang:pull" to the end of your build command.')
+        ->expectsOutputToContain('Add "php artisan boomerang:pull" to your build, right after composer install.')
         ->expectsOutputToContain('Set FILE_BOOMERANG_GITHUB_TOKEN')
         ->expectsOutputToContain('Set FILE_BOOMERANG_DEBOUNCE below 900.')
         ->expectsOutputToContain('File sessions are wiped on every deploy')
