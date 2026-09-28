@@ -44,7 +44,7 @@ class Pull extends Command
         $outcome = Manifest::lock(function () {
             $batches = Batch::pending();
 
-            return tap($batches->applyTo(new WorkingTree, Divergence::PreferEditor), function (Outcome $outcome) use ($batches) {
+            return tap($batches->applyTo(new WorkingTree, Divergence::PreferEditor), function (Outcome $outcome) use ($batches): void {
                 $outcome->writeTo($outcome->tree);
 
                 Manifest::seed($batches->newest()?->id)->save();

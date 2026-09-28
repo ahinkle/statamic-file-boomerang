@@ -41,12 +41,12 @@ class Doctor extends Command
     {
         return [
             'File Boomerang is enabled' => fn () => config('file-boomerang.enabled') ? null : 'Set FILE_BOOMERANG_ENABLED=true on the host.',
-            'The mailbox can be written, read and cleaned up' => fn () => $this->mailboxProblem(),
+            'The mailbox can be written, read and cleaned up' => $this->mailboxProblem(...),
             'This server has a baseline' => fn () => Manifest::current() ? null : 'Add "php artisan boomerang:pull" to the end of your build command.',
             $this->trackedPathsName() => fn () => $this->existingTrackedPaths()->isNotEmpty() ? null : 'None of the tracked paths exist. Check the paths in config/file-boomerang.php.',
-            'The GitHub repository and token are set' => fn () => $this->githubSettingsProblem(),
-            'The token can see the repository and its workflow' => fn () => $this->githubAccessProblem(),
-            'The cache is shared with the queue workers' => fn () => $this->cacheProblem(),
+            'The GitHub repository and token are set' => $this->githubSettingsProblem(...),
+            'The token can see the repository and its workflow' => $this->githubAccessProblem(...),
+            'The cache is shared with the queue workers' => $this->cacheProblem(...),
             'The debounce is under 15 minutes' => fn () => config('file-boomerang.debounce') < 900 ? null : 'Set FILE_BOOMERANG_DEBOUNCE below 900. Most queues cannot delay a job longer than 15 minutes.',
         ];
     }

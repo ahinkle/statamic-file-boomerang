@@ -4,6 +4,7 @@ namespace Ahinkle\FileBoomerang\Listeners;
 
 use Ahinkle\FileBoomerang\Editor;
 use Ahinkle\FileBoomerang\Jobs\MailChanges;
+use Override;
 use Statamic\Events\Concerns\ListensForContentEvents;
 use Statamic\Events\Event;
 use Statamic\Events\Subscriber;
@@ -32,6 +33,7 @@ class RecordContentChanges extends Subscriber
     /**
      * @return array<class-string, array{class-string, string}>
      */
+    #[Override]
     protected function getListeners(): array
     {
         return array_fill_keys($this->events, [static::class, 'record']);

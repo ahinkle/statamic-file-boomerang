@@ -263,8 +263,8 @@ class Landing
         collect(config()->array('file-boomerang.landing.workflows'))
             ->filter(fn (mixed $workflow) => is_string($workflow))
             ->each(fn (string $workflow) => Http::github()
-            ->post("repos/{$this->repository()}/actions/workflows/".rawurlencode($workflow).'/dispatches', ['ref' => $this->branch])
-            ->throw());
+                ->post("repos/{$this->repository()}/actions/workflows/".rawurlencode($workflow).'/dispatches', ['ref' => $this->branch])
+                ->throw());
     }
 
     /**

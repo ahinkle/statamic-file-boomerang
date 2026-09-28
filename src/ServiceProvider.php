@@ -10,6 +10,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Http;
+use Override;
 use Statamic\Providers\AddonServiceProvider;
 
 class ServiceProvider extends AddonServiceProvider
@@ -26,6 +27,7 @@ class ServiceProvider extends AddonServiceProvider
         ],
     ];
 
+    #[Override]
     public function bootAddon(): void
     {
         $this->app->make(Kernel::class)->addToMiddlewarePriorityBefore(SubstituteBindings::class, CatchUpBeforeEditing::class);
@@ -44,6 +46,7 @@ class ServiceProvider extends AddonServiceProvider
         });
     }
 
+    #[Override]
     protected function schedule(Schedule $schedule): void
     {
         $schedule->command('boomerang:push')

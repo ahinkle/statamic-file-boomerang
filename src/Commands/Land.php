@@ -22,8 +22,8 @@ class Land extends Command
 
         try {
             $result = $this->option('dry-run') ? $landing->dryRun() : $landing->land();
-        } catch (LandingRejected $e) {
-            $this->components->error($e->getMessage());
+        } catch (LandingRejected $landingRejected) {
+            $this->components->error($landingRejected->getMessage());
 
             return self::FAILURE;
         }

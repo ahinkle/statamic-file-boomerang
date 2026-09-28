@@ -55,7 +55,7 @@ class Batches extends Collection
 
     public function applyTo(Tree $tree, Divergence $divergence): Outcome
     {
-        return tap(new Outcome($tree, $this->toBase()->map(fn (Batch $batch) => $batch->id)), function (Outcome $outcome) use ($divergence) {
+        return tap(new Outcome($tree, $this->toBase()->map(fn (Batch $batch) => $batch->id)), function (Outcome $outcome) use ($divergence): void {
             $this->each(fn (Batch $batch) => $batch->changes->each(
                 fn (Change $change) => $this->applyChange($change, $batch, $outcome, $divergence)
             ));
@@ -128,8 +128,8 @@ class Batches extends Collection
     {
         try {
             Paths::assertSafe($path);
-        } catch (UnsafePath $e) {
-            return $e->reason;
+        } catch (UnsafePath $unsafePath) {
+            return $unsafePath->reason;
         }
 
         return null;

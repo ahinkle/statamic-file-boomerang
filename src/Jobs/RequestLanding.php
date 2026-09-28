@@ -123,14 +123,20 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
     protected function isWorthRetrying(Response $response): bool
     {
-        return $response->serverError()
-            || $response->tooManyRequests()
-            || ($response->forbidden() && $this->isRateLimited($response));
+        return match (true) {
+            $response->serverError(), $response->tooManyRequests() => true,
+            $response->forbidden() => $this->isRateLimited($response),
+            default => false,
+        };
     }
 
     protected function isRateLimited(Response $response): bool
     {
-        return $response->header('Retry-After') !== '' || $response->header('X-RateLimit-Remaining') === '0';
+        if ($response->header('Retry-After') !== '') {
+            return true;
+        }
+
+        return $response->header('X-RateLimit-Remaining') === '0';
     }
 
     protected function reasonFor(Response $response): string

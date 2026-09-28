@@ -36,7 +36,7 @@ class MailChanges
             return null;
         }
 
-        return tap(Batch::record($changes, $this->editor), function (Batch $batch) use ($manifest, $changes) {
+        return tap(Batch::record($changes, $this->editor), function (Batch $batch) use ($manifest, $changes): void {
             $manifest->withChanges($changes, $batch->id)->save();
 
             BatchMailed::dispatch($batch);

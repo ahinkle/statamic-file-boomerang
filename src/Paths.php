@@ -104,7 +104,11 @@ class Paths
 
     protected static function isExcluded(string $path): bool
     {
-        return static::isInsideGlideCache($path) || collect(config()->array('file-boomerang.exclude'))
+        if (static::isInsideGlideCache($path)) {
+            return true;
+        }
+
+        return collect(config()->array('file-boomerang.exclude'))
             ->push('.file-boomerang-*', '*/.file-boomerang-*')
             ->contains(fn (mixed $pattern) => is_string($pattern) && fnmatch($pattern, $path));
     }
