@@ -32,9 +32,14 @@ readonly class LandingResult
         return $this->batchIds->isEmpty();
     }
 
+    public function isDryRun(): bool
+    {
+        return $this->sha === null;
+    }
+
     public function landed(): bool
     {
-        return $this->sha !== null && $this->paths->isNotEmpty();
+        return ! $this->isDryRun() && $this->paths->isNotEmpty();
     }
 
     public function summary(): string
@@ -44,7 +49,7 @@ readonly class LandingResult
 
         return match (true) {
             $this->isEmpty() => 'Nothing is waiting in the mailbox.',
-            $this->sha === null => "Would land {$files} from {$batches}.",
+            $this->isDryRun() => "Would land {$files} from {$batches}.",
             $this->landed() => "Landed {$files} from {$batches} in ".Str::substr($this->sha, 0, 7).'.',
             default => "Nothing new to land from {$batches}.",
         };

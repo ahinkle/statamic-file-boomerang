@@ -17,7 +17,11 @@ class Install extends Command
     public function handle(): int
     {
         $this->publishConfig();
-        $this->writeWorkflow();
+
+        if ($this->shouldWriteWorkflow()) {
+            $this->writeWorkflow();
+        }
+
         $this->printChecklist();
 
         return self::SUCCESS;
@@ -34,17 +38,22 @@ class Install extends Command
         $this->components->info('Published config/file-boomerang.php.');
     }
 
-    protected function writeWorkflow(): void
+    protected function shouldWriteWorkflow(): bool
     {
-        if (File::exists($this->workflowPath()) && ! $this->option('force') && ! $this->components->confirm('The File Boomerang workflow already exists. Overwrite it?')) {
-            return;
+        if (! File::exists($this->workflowPath()) || $this->option('force')) {
+            return true;
         }
 
+        return $this->components->confirm('The File Boomerang workflow already exists. Overwrite it?');
+    }
+
+    protected function writeWorkflow(): void
+    {
         File::ensureDirectoryExists(dirname($this->workflowPath()));
 
         File::put($this->workflowPath(), str_replace(
-            ['{{ branch }}', '{{ php }}'],
-            [config('file-boomerang.github.branch'), PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION],
+            ['{{ branch }}', '{{ event }}', '{{ php }}'],
+            [config('file-boomerang.github.branch'), config('file-boomerang.github.event'), PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION],
             File::get(dirname(__DIR__, 2).'/stubs/workflow.yml'),
         ));
 
@@ -53,7 +62,9 @@ class Install extends Command
 
     protected function printChecklist(): void
     {
-        $this->components->bulletList([
+        $this->components->info('Finish the setup:');
+
+        collect([
             'On the host, set FILE_BOOMERANG_ENABLED=true, FILE_BOOMERANG_GITHUB_REPOSITORY (owner/repo) and FILE_BOOMERANG_GITHUB_TOKEN (a fine-grained token with Contents read and write on that repository).',
             'On the host, point the mailbox at a bucket with FILE_BOOMERANG_BUCKET, FILE_BOOMERANG_ENDPOINT, FILE_BOOMERANG_ACCESS_KEY_ID and FILE_BOOMERANG_SECRET_ACCESS_KEY, or name a disk from config/filesystems.php with FILE_BOOMERANG_DISK.',
             'On GitHub, add the repository secrets FILE_BOOMERANG_BUCKET, FILE_BOOMERANG_ENDPOINT, FILE_BOOMERANG_ACCESS_KEY_ID and FILE_BOOMERANG_SECRET_ACCESS_KEY. Add FILE_BOOMERANG_DEPLOY_HOOK too if your host does not deploy pushes made by GitHub Actions.',
@@ -61,7 +72,7 @@ class Install extends Command
             'Build command, after composer install: php artisan boomerang:pull',
             'Deploy command, when the Stache cache is shared (Redis or the database): php please stache:refresh',
             'Check everything with: php artisan boomerang:doctor',
-        ]);
+        ])->each(fn (string $step, int $index) => $this->line(($index + 1).". {$step}"));
     }
 
     protected function workflowPath(): string

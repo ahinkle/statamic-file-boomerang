@@ -2,7 +2,7 @@ name: File Boomerang
 
 on:
   repository_dispatch:
-    types: [file-boomerang]
+    types: ['{{ event }}']
   workflow_dispatch:
 
 concurrency:
@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: '{{ branch }}'
           fetch-depth: 0

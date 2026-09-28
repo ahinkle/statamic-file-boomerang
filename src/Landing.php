@@ -64,10 +64,13 @@ class Landing
 
         $outcome = retry(4, fn () => $this->landOnce($batches), when: fn (Throwable $e) => $e instanceof LandingRejected);
 
-        return tap(
-            LandingResult::from($outcome, $this->head(), $this->openConflicts($outcome, $batches)),
-            fn () => $this->cleanUp($batches),
-        );
+        $sha = $this->head();
+
+        $conflictsUrl = $this->openConflicts($outcome, $batches);
+
+        $this->cleanUp($batches);
+
+        return LandingResult::from($outcome, $sha, $conflictsUrl);
     }
 
     protected function landOnce(Batches $batches): Outcome
@@ -83,7 +86,7 @@ class Landing
         $this->stage($outcome->paths());
 
         if ($this->hasStagedChanges()) {
-            $this->commit(config('file-boomerang.landing.commit_message'), $outcome->paths(), $this->authorOf($batches, $outcome), $batches->editors());
+            $this->commit(config('file-boomerang.landing.commit_message'), $outcome->paths(), $batches);
 
             $this->push();
         }
@@ -99,7 +102,7 @@ class Landing
 
         $branch = "file-boomerang/conflict-{$batches->first()->id}";
 
-        $this->pushConflictBranch($outcome->conflicts, $branch);
+        $this->pushConflictBranch($outcome->conflicts, $branch, $batches);
 
         return $this->openPullRequest($outcome->conflicts, $branch)
             ?? $this->openIssue($outcome->conflicts, $branch)
@@ -109,7 +112,7 @@ class Landing
     /**
      * @param  Collection<string, Conflict>  $conflicts
      */
-    protected function pushConflictBranch(Collection $conflicts, string $branch): void
+    protected function pushConflictBranch(Collection $conflicts, string $branch, Batches $batches): void
     {
         $this->git('switch', '--quiet', '--force-create', $branch)->throw();
 
@@ -119,7 +122,7 @@ class Landing
             $this->stage($conflicts->keys());
 
             if ($this->hasStagedChanges()) {
-                $this->commit($this->conflictTitle(), $conflicts->keys(), $conflicts->last()->editor ?? $this->fallbackAuthor(), $conflicts->flatMap->editors);
+                $this->commit($this->conflictTitle(), $conflicts->keys(), $batches);
             }
 
             $this->git('push', '--quiet', '--force', 'origin', "HEAD:refs/heads/{$branch}")->throw();
@@ -258,10 +261,7 @@ class Landing
      */
     protected function stage(Collection $paths): void
     {
-        [$present, $missing] = $paths->partition(fn (string $path) => File::exists(base_path($path)));
-
-        $present->chunk(100)->each(fn (Collection $chunk) => $this->git('add', '--force', '--', ...$chunk)->throw());
-        $missing->chunk(100)->each(fn (Collection $chunk) => $this->git('rm', '--cached', '--quiet', '--ignore-unmatch', '--', ...$chunk)->throw());
+        $paths->chunk(100)->each(fn (Collection $chunk) => $this->git('add', '--all', '--force', '--', ...$chunk)->throw());
     }
 
     protected function hasStagedChanges(): bool
@@ -271,11 +271,14 @@ class Landing
 
     /**
      * @param  Collection<int, string>  $paths
-     * @param  Collection<int, Editor>  $editors
      */
-    protected function commit(string $subject, Collection $paths, Editor $author, Collection $editors): void
+    protected function commit(string $subject, Collection $paths, Batches $batches): void
     {
-        $coAuthors = $editors->reject(fn (Editor $editor) => $editor->email === $author->email);
+        $credited = $batches->touching($paths);
+
+        $author = $credited->newest()?->editor ?? Editor::fromArray(config('file-boomerang.landing.author'));
+
+        $coAuthors = $credited->editors()->reject(fn (Editor $editor) => $editor->email === $author->email);
 
         $this->process()
             ->input(collect([$subject, $this->pathList($paths), $this->trailers($coAuthors)])->filter()->implode("\n\n"))
@@ -310,18 +313,6 @@ class Landing
             LandingRejected::class,
             "Git could not push to [{$this->branch}], so every batch stays in the mailbox. ".trim($result->errorOutput()),
         );
-    }
-
-    protected function authorOf(Batches $batches, Outcome $outcome): Editor
-    {
-        return $batches
-            ->filter(fn (Batch $batch) => $batch->changes->pluck('path')->intersect($outcome->paths())->isNotEmpty())
-            ->newest()?->editor ?? $this->fallbackAuthor();
-    }
-
-    protected function fallbackAuthor(): Editor
-    {
-        return Editor::fromArray(config('file-boomerang.landing.author'));
     }
 
     protected function fetch(): void
