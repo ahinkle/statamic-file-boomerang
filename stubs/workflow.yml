@@ -1,8 +1,6 @@
 name: File Boomerang
 
 on:
-  repository_dispatch:
-    types: ['{{ event }}']
   workflow_dispatch:
 
 concurrency:
@@ -22,17 +20,7 @@ jobs:
     timeout-minutes: 15
 
     env:
-      FILE_BOOMERANG_BUCKET: ${{ secrets.FILE_BOOMERANG_BUCKET }}
-      FILE_BOOMERANG_ENDPOINT: ${{ secrets.FILE_BOOMERANG_ENDPOINT }}
-      FILE_BOOMERANG_ACCESS_KEY_ID: ${{ secrets.FILE_BOOMERANG_ACCESS_KEY_ID }}
-      FILE_BOOMERANG_SECRET_ACCESS_KEY: ${{ secrets.FILE_BOOMERANG_SECRET_ACCESS_KEY }}
-      FILE_BOOMERANG_REGION: ${{ vars.FILE_BOOMERANG_REGION || 'auto' }}
-      FILE_BOOMERANG_PATH_STYLE: ${{ vars.FILE_BOOMERANG_PATH_STYLE || 'false' }}
-      FILE_BOOMERANG_PREFIX: ${{ vars.FILE_BOOMERANG_PREFIX || 'file-boomerang' }}
-      FILE_BOOMERANG_DEPLOY_HOOK: ${{ secrets.FILE_BOOMERANG_DEPLOY_HOOK }}
-      FILE_BOOMERANG_GITHUB_REPOSITORY: ${{ github.repository }}
-      FILE_BOOMERANG_GITHUB_BRANCH: '{{ branch }}'
-      GITHUB_TOKEN: ${{ github.token }}
+      CACHE_STORE: array
 
     steps:
       - name: Checkout
@@ -53,3 +41,15 @@ jobs:
 
       - name: Land
         run: php artisan boomerang:land
+        env:
+          FILE_BOOMERANG_BUCKET: ${{ secrets.FILE_BOOMERANG_BUCKET }}
+          FILE_BOOMERANG_ENDPOINT: ${{ secrets.FILE_BOOMERANG_ENDPOINT }}
+          FILE_BOOMERANG_ACCESS_KEY_ID: ${{ secrets.FILE_BOOMERANG_ACCESS_KEY_ID }}
+          FILE_BOOMERANG_SECRET_ACCESS_KEY: ${{ secrets.FILE_BOOMERANG_SECRET_ACCESS_KEY }}
+          FILE_BOOMERANG_REGION: ${{ vars.FILE_BOOMERANG_REGION || 'auto' }}
+          FILE_BOOMERANG_PATH_STYLE: ${{ vars.FILE_BOOMERANG_PATH_STYLE || 'false' }}
+          FILE_BOOMERANG_PREFIX: ${{ vars.FILE_BOOMERANG_PREFIX || 'file-boomerang' }}
+          FILE_BOOMERANG_DEPLOY_HOOK: ${{ secrets.FILE_BOOMERANG_DEPLOY_HOOK }}
+          FILE_BOOMERANG_GITHUB_REPOSITORY: ${{ github.repository }}
+          FILE_BOOMERANG_GITHUB_BRANCH: '{{ branch }}'
+          GITHUB_TOKEN: ${{ github.token }}

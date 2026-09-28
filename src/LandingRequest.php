@@ -20,7 +20,7 @@ readonly class LandingRequest
 
     public static function record(Batch $newest): self
     {
-        return tap(new self($newest->id, now()->toImmutable()), fn (LandingRequest $request) => $request->save());
+        return tap(new self($newest->id, now()->toImmutable()))->save();
     }
 
     public function covers(Batch $batch): bool
@@ -29,20 +29,20 @@ readonly class LandingRequest
             && $this->requestedAt->addMinutes(config()->integer('file-boomerang.landing.redispatch_after'))->isFuture();
     }
 
+    public function save(): void
+    {
+        Mailbox::disk()->put(static::key(), json_encode([
+            'newest' => $this->newest,
+            'requested_at' => $this->requestedAt->toIso8601String(),
+        ], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    }
+
     /**
      * @param  array<mixed>  $attributes
      */
     protected static function fromArray(array $attributes): self
     {
         return new self(Arr::string($attributes, 'newest'), CarbonImmutable::parse(Arr::string($attributes, 'requested_at')));
-    }
-
-    protected function save(): void
-    {
-        Mailbox::disk()->put(static::key(), json_encode([
-            'newest' => $this->newest,
-            'requested_at' => $this->requestedAt->toIso8601String(),
-        ], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
     }
 
     protected static function key(): string

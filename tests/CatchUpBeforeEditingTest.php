@@ -51,6 +51,27 @@ it('looks in the mailbox at most once per interval', function () {
     $this->get(cp_route('collections.entries.edit', ['pages', 'home']))->assertSee('Welcome home');
 });
 
+it('never catches up on the request that saves, so a concurrent edit is merged rather than lost', function () {
+    $path = base_path('content/collections/pages/home.md');
+    $original = GitHash::ofFile($path);
+    $this->get(cp_route('collections.entries.edit', ['pages', 'home']))->assertOk();
+
+    Batch::record(collect([
+        Change::put('content/collections/pages/home.md', $this->storeBlob(File::get($path)."summary: 'From another server'\n"), $original, 1),
+    ]), null);
+    $this->travel(16)->seconds();
+
+    $this->patchJson(cp_route('collections.entries.update', ['pages', 'home']), [
+        'title' => 'Welcome home',
+        'slug' => 'home',
+        'published' => true,
+    ])->assertOk();
+
+    expect(Batch::pending()->last()->changes->sole())
+        ->path->toBe('content/collections/pages/home.md')
+        ->base->toBe($original);
+});
+
 it('keeps the control panel working when the mailbox is unreachable', function () {
     Log::spy();
     config(['file-boomerang.mailbox.disk' => 'missing']);

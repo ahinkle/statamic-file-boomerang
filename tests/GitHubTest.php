@@ -18,12 +18,10 @@ it('talks to the github api with the configured token', function () {
     config(['file-boomerang.github.token' => 'github_pat_owner']);
     Http::fake();
 
-    Http::github()->post('repos/ahinkle/sccc.org/dispatches', ['event_type' => 'file-boomerang']);
+    Http::github()->get('repos/ahinkle/sccc.org');
 
-    Http::assertSent(fn (Request $request) => $request->url() === 'https://api.github.com/repos/ahinkle/sccc.org/dispatches'
-        && $request->hasHeader('Authorization', 'Bearer github_pat_owner')
-        && $request->hasHeader('Accept', 'application/vnd.github+json')
-        && $request->hasHeader('X-GitHub-Api-Version', '2022-11-28'));
+    Http::assertSent(fn (Request $request) => $request->url() === 'https://api.github.com/repos/ahinkle/sccc.org'
+        && $request->hasHeader('Authorization', 'Bearer github_pat_owner'));
 });
 
 it('uses the workflow token inside github actions', function () {

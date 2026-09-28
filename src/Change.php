@@ -48,6 +48,11 @@ readonly class Change
         return $hash === $this->base;
     }
 
+    public function isMissingFromTheMailbox(): bool
+    {
+        return $this->isPut() && ! Blob::exists($this->blob);
+    }
+
     public function contents(): ?string
     {
         return $this->isPut() ? Blob::contents($this->blob) : null;

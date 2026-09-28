@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
 use Statamic\Console\RunsInPlease;
 use Throwable;
 
-class Doctor extends Command
+class DoctorCommand extends Command
 {
     use RunsInPlease;
 
@@ -59,6 +59,7 @@ class Doctor extends Command
         return [
             'A queue waits out the debounce' => fn () => RequestLanding::canWait() ? null : 'The queue connection is sync, so the scheduler asks for landings instead. Keep the scheduler running every minute.',
             'Sessions survive a deploy' => fn () => config('session.driver') === 'file' ? 'File sessions are wiped on every deploy, which signs editors out. Use database or redis for SESSION_DRIVER.' : null,
+            'The GitHub Action reads the same mailbox' => $this->mailboxDiskProblem(...),
         ];
     }
 
@@ -115,7 +116,7 @@ class Doctor extends Command
     {
         return match (true) {
             blank(config('file-boomerang.github.repository')) => 'Set FILE_BOOMERANG_GITHUB_REPOSITORY to owner/repository.',
-            blank(config('file-boomerang.github.token')) => 'Set FILE_BOOMERANG_GITHUB_TOKEN to a fine-grained token with Contents: Read and write.',
+            blank(config('file-boomerang.github.token')) => 'Set FILE_BOOMERANG_GITHUB_TOKEN to a fine-grained token with Actions: Read and write.',
             default => null,
         };
     }
@@ -127,12 +128,31 @@ class Doctor extends Command
         }
 
         $repository = config()->string('file-boomerang.github.repository');
-        $branch = config()->string('file-boomerang.github.branch');
 
         return match (true) {
             Http::github()->get("repos/{$repository}")->failed() => "The token cannot see {$repository}. Give it access to that repository.",
-            Http::github()->get("repos/{$repository}/contents/.github/workflows/file-boomerang.yml", ['ref' => $branch])->failed() => "There is no .github/workflows/file-boomerang.yml on {$branch}. Run \"php artisan boomerang:install\" and push it.",
+            Http::github()->get("repos/{$repository}/actions/workflows/file-boomerang.yml")->failed() => "The token cannot start .github/workflows/file-boomerang.yml. Give it Actions: Read and write, run \"php artisan boomerang:install\" and push the workflow to the default branch.",
             default => null,
+        };
+    }
+
+    protected function mailboxDiskProblem(): ?string
+    {
+        $disk = config('file-boomerang.mailbox.disk');
+
+        if (! is_string($disk) || blank($disk) || ! $this->addsItsOwnRoot(config("filesystems.disks.{$disk}"))) {
+            return null;
+        }
+
+        return "The {$disk} disk adds its own root, but the GitHub Action reads the mailbox without it, so edits would never land. Use a disk with no root, or the four FILE_BOOMERANG_* bucket variables.";
+    }
+
+    protected function addsItsOwnRoot(mixed $disk): bool
+    {
+        return is_array($disk) && match ($disk['driver'] ?? null) {
+            'scoped' => true,
+            's3' => filled($disk['root'] ?? null),
+            default => false,
         };
     }
 

@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\File;
 
 function land(Divergence $divergence = Divergence::Merge): Outcome
 {
-    return tap(Batch::pending()->applyTo(new WorkingTree, $divergence))->writeTo(new WorkingTree);
+    return tap(Batch::pending()->applyTo(new WorkingTree, $divergence))->write();
 }
 
 function contents(string $path): ?string
@@ -97,16 +97,7 @@ it('leaves a diverged edit alone during catch-up', function () {
     $outcome = land(Divergence::Skip);
 
     expect(contents('content/home.md'))->toBe('Edited on this server')
-        ->and($outcome->skipped->all())->toBe(['content/home.md' => 'it changed here after the edit was made']);
-});
-
-it('takes the editor version of a diverged edit when pulling', function () {
-    $this->writeFile('content/home.md', 'The version in git');
-    mailed(edit('content/home.md', 'The editor version', from: 'Welcome'));
-
-    land(Divergence::PreferEditor);
-
-    expect(contents('content/home.md'))->toBe('The editor version');
+        ->and($outcome->skipped->all())->toBe(['content/home.md' => 'it changed here after the edit was made, so the landing will merge it']);
 });
 
 it('merges a diverged edit that touches other lines', function () {
@@ -132,7 +123,7 @@ it('turns an overlapping edit into a conflict and keeps the branch version', fun
     expect(contents('content/home.md'))->toBe("body: Sunday at 11\n")
         ->and($outcome->paths())->toBeEmpty()
         ->and($conflict->change->contents())->toBe("body: Sunday at 10\n")
-        ->and($conflict->editor)->toEqual($andy)
+        ->and($conflict->editors->all())->toEqual([$andy])
         ->and($conflict->batchIds->all())->toBe([$batch->id]);
 });
 
@@ -173,8 +164,7 @@ it('handles a diverged delete by divergence', function (Divergence $divergence, 
 
     expect(contents('content/file.md'))->toBe($expected);
 })->with([
-    'catch-up leaves it' => [Divergence::Skip, 'Changed here'],
-    'pull takes the delete' => [Divergence::PreferEditor, null],
+    'catch-up and pull leave it' => [Divergence::Skip, 'Changed here'],
     'landing keeps it for the conflict' => [Divergence::Merge, 'Changed here'],
 ]);
 
@@ -189,22 +179,54 @@ it('sends every later change of a conflicted path to the conflict', function () 
     expect(contents('content/home.md'))->toBe("body: branch\n")
         ->and($conflict->change->contents())->toBe("body: andy again\n")
         ->and($conflict->batchIds->all())->toBe([$first->id, $second->id, $third->id])
-        ->and($conflict->editors->all())->toEqual([$andy, $greg])
-        ->and($conflict->editor)->toEqual($andy);
+        ->and($conflict->editors->all())->toEqual([$andy, $greg]);
 });
 
-it('credits the conflict to the editor of its final version', function () use ($andy) {
-    $this->writeFile('content/home.md', "body: branch\n");
-    mailed(edit('content/home.md', "body: andy\n", from: "body: original\n"), $andy);
-    mailed(edit('content/home.md', "body: scheduler\n", from: "body: andy\n"));
+it('sends a whole save to the conflict when part of it cannot be merged', function () {
+    $this->writeFile('content/pages/old-slug.md', "title: Changed in git\n");
+    Batch::record(collect([
+        removal('content/pages/old-slug.md', from: "title: About\n"),
+        edit('content/pages/new-slug.md', "title: About\n"),
+    ]), null);
 
-    expect(land()->conflicts->get('content/home.md')->editor)->toBeNull();
+    $outcome = land();
+
+    expect(contents('content/pages/old-slug.md'))->toBe("title: Changed in git\n")
+        ->and(contents('content/pages/new-slug.md'))->toBeNull()
+        ->and($outcome->paths())->toBeEmpty()
+        ->and($outcome->conflicts->keys()->all())->toBe(['content/pages/old-slug.md', 'content/pages/new-slug.md']);
 });
+
+it('still applies the rest of a save during catch-up and pull', function () {
+    $this->writeFile('content/pages/old-slug.md', "title: Changed here\n");
+    Batch::record(collect([
+        removal('content/pages/old-slug.md', from: "title: About\n"),
+        edit('content/pages/new-slug.md', "title: About\n"),
+    ]), null);
+
+    $outcome = land(Divergence::Skip);
+
+    expect(contents('content/pages/old-slug.md'))->toBe("title: Changed here\n")
+        ->and(contents('content/pages/new-slug.md'))->toBe("title: About\n")
+        ->and($outcome->skipped->keys()->all())->toBe(['content/pages/old-slug.md']);
+});
+
+it('skips an edit whose contents are missing from the mailbox and applies the rest', function (Divergence $divergence) {
+    $lost = edit('content/lost.md', 'Lost');
+    $this->mailbox()->delete("file-boomerang/blobs/{$lost->blob}");
+    Batch::record(collect([$lost, edit('content/kept.md', 'Kept')]), null);
+
+    $outcome = land($divergence);
+
+    expect(contents('content/kept.md'))->toBe('Kept')
+        ->and(contents('content/lost.md'))->toBeNull()
+        ->and($outcome->skipped->all())->toBe(['content/lost.md' => 'its contents are missing from the mailbox']);
+})->with(Divergence::cases());
 
 it('skips unsafe and untracked paths without writing them', function (string $path) {
     mailed(edit($path, 'nope'));
 
-    $outcome = land(Divergence::PreferEditor);
+    $outcome = land(Divergence::Skip);
 
     expect($outcome->skipped->keys()->all())->toBe([$path])
         ->and($outcome->paths())->toBeEmpty()
@@ -213,6 +235,7 @@ it('skips unsafe and untracked paths without writing them', function (string $pa
     'a parent segment' => 'content/../escape.md',
     'git internals' => '.git/hooks/post-checkout',
     'an untracked path' => 'app/Models/User.php',
+    'a backtick' => 'content/`rm`.md',
 ]);
 
 it('merges against the version in git history', function () {
@@ -228,7 +251,7 @@ it('merges against the version in git history', function () {
     $editor = "title: Welcome\nsummary: Our church\nbody: Sunday at 10\n";
     mailed(Change::put('content/home.md', $this->storeBlob($editor), GitHash::of($original), strlen($editor)));
 
-    Batch::pending()->applyTo(new GitTree(base_path()), Divergence::Merge)->writeTo(new GitTree(base_path()));
+    Batch::pending()->applyTo(new GitTree(base_path()), Divergence::Merge)->write();
 
     expect(contents('content/home.md'))->toBe("title: Welcome home\nsummary: Our church\nbody: Sunday at 10\n");
 });
@@ -236,6 +259,7 @@ it('merges against the version in git history', function () {
 it('knows when the mailbox has gone quiet', function () {
     expect(Batches::make()->isQuiet(120))->toBeTrue();
 
+    $this->freezeSecond();
     mailed(edit('content/home.md', 'Welcome'));
 
     Carbon::setTestNow(now()->addSeconds(119));
@@ -245,16 +269,15 @@ it('knows when the mailbox has gone quiet', function () {
     expect(Batch::pending()->isQuiet(120))->toBeTrue();
 });
 
-it('lists the editors, the newest batch and every blob still referenced', function () use ($andy, $greg) {
+it('lists the editors and every blob still referenced', function () use ($andy, $greg) {
     mailed(edit('content/a.md', 'a2', from: 'a1'), $andy);
     mailed(edit('content/b.md', 'b1'), $greg);
     mailed(edit('content/c.md', 'c1'), $andy);
-    $newest = mailed(removal('content/d.md', from: 'd1'));
+    mailed(removal('content/d.md', from: 'd1'));
 
     $batches = Batch::pending();
 
     expect($batches->editors()->all())->toEqual([$andy, $greg])
-        ->and($batches->newest()->id)->toBe($newest->id)
         ->and($batches->blobs()->sort()->values()->all())->toBe(
             collect(['a1', 'a2', 'b1', 'c1', 'd1'])->map(fn (string $bytes) => GitHash::of($bytes))->sort()->values()->all()
         );

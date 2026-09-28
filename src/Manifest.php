@@ -104,12 +104,12 @@ class Manifest
     /**
      * @param  Collection<array-key, Change>  $changes
      */
-    public function withChanges(Collection $changes, string $cursor): self
+    public function withChanges(Collection $changes, ?string $cursor): self
     {
         return new self($cursor, $this->files
-            ->merge($changes->mapWithKeys(fn (Change $change) => $change->isPut() ? [
+            ->merge($changes->filter->isPut()->mapWithKeys(fn (Change $change) => [
                 $change->path => ['hash' => $change->blob, 'size' => $change->size, 'mtime' => null],
-            ] : []))
+            ]))
             ->except($changes->filter->isDelete()->pluck('path'))
             ->sortKeys());
     }

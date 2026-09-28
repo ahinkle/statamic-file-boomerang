@@ -18,14 +18,23 @@ class MailChanges
     public function handle(): ?Batch
     {
         return Manifest::lock(function () {
-            $manifest = Manifest::current();
+            $this->catchUp();
 
-            if (! $manifest) {
+            if (! $manifest = Manifest::current()) {
                 return $this->recordBaseline();
             }
 
             return $this->mailChangesSince($manifest);
         });
+    }
+
+    protected function catchUp(): void
+    {
+        if (! config('file-boomerang.catch_up.enabled') || ! Manifest::current()) {
+            return;
+        }
+
+        rescue(fn () => CatchUp::dispatchSync());
     }
 
     protected function mailChangesSince(Manifest $manifest): ?Batch
@@ -36,13 +45,15 @@ class MailChanges
             return null;
         }
 
-        return tap(Batch::record($changes, $this->editor), function (Batch $batch) use ($manifest, $changes): void {
-            $manifest->withChanges($changes, $batch->id)->save();
+        $batch = Batch::record($changes, $this->editor);
 
-            BatchMailed::dispatch($batch);
+        $manifest->withChanges($changes, $batch->id)->save();
 
-            RequestLanding::dispatchAfterDebounce();
-        });
+        BatchMailed::dispatch($batch);
+
+        RequestLanding::dispatchAfterDebounce();
+
+        return $batch;
     }
 
     protected function recordBaseline(): null

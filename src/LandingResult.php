@@ -19,12 +19,21 @@ readonly class LandingResult
         public Collection $conflicts = new Collection,
         public Collection $skipped = new Collection,
         public ?string $sha = null,
+        public ?string $conflictsBranch = null,
         public ?string $conflictsUrl = null,
     ) {}
 
-    public static function from(Outcome $outcome, ?string $sha = null, ?string $conflictsUrl = null): self
+    public static function from(Outcome $outcome, ?string $sha = null, ?string $conflictsBranch = null, ?string $conflictsUrl = null): self
     {
-        return new self($outcome->batchIds, $outcome->paths(), $outcome->conflicts, $outcome->skipped, $sha, $conflictsUrl);
+        return new self($outcome->batchIds, $outcome->paths(), $outcome->conflicts, $outcome->skipped, $sha, $conflictsBranch, $conflictsUrl);
+    }
+
+    /**
+     * @phpstan-assert-if-true !null $this->conflictsBranch
+     */
+    public function hasUnreportedConflicts(): bool
+    {
+        return $this->conflictsBranch !== null && $this->conflictsUrl === null;
     }
 
     public function isEmpty(): bool

@@ -21,13 +21,15 @@ class RecordContentChanges extends Subscriber
 
         $editor = Editor::from($event->authenticatedUser);
 
+        $mail = fn () => rescue(fn () => MailChanges::dispatchSync($editor));
+
         if (app()->runningInConsole()) {
-            rescue(fn () => MailChanges::dispatchSync($editor));
+            $mail();
 
             return;
         }
 
-        defer(fn () => rescue(fn () => MailChanges::dispatchSync($editor)), 'file-boomerang')->always();
+        defer($mail, 'file-boomerang')->always();
     }
 
     /**

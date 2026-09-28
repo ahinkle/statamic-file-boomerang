@@ -46,7 +46,7 @@ class Mailbox
         throw_if(
             blank(config('file-boomerang.mailbox.bucket')),
             InvalidArgumentException::class,
-            'The mailbox has no bucket. Set FILE_BOOMERANG_BUCKET, or FILE_BOOMERANG_DISK to use a disk from config/filesystems.php.',
+            'The mailbox has no bucket. Set FILE_BOOMERANG_BUCKET, FILE_BOOMERANG_ENDPOINT, FILE_BOOMERANG_ACCESS_KEY_ID and FILE_BOOMERANG_SECRET_ACCESS_KEY.',
         );
 
         return [

@@ -6,7 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Statamic\Console\RunsInPlease;
 
-class Install extends Command
+class InstallCommand extends Command
 {
     use RunsInPlease;
 
@@ -52,12 +52,12 @@ class Install extends Command
         File::ensureDirectoryExists(dirname($this->workflowPath()));
 
         File::put($this->workflowPath(), str_replace(
-            ['{{ branch }}', '{{ event }}', '{{ php }}'],
-            [config()->string('file-boomerang.github.branch'), config()->string('file-boomerang.github.event'), PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION],
+            ['{{ branch }}', '{{ php }}'],
+            [$this->branch(), PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION],
             File::get(dirname(__DIR__, 2).'/stubs/workflow.yml'),
         ));
 
-        $this->components->info('Wrote .github/workflows/file-boomerang.yml.');
+        $this->components->info("Wrote .github/workflows/file-boomerang.yml to land edits on {$this->branch()}. Set FILE_BOOMERANG_GITHUB_BRANCH and run this again with --force to use another branch.");
     }
 
     protected function printChecklist(): void
@@ -65,14 +65,20 @@ class Install extends Command
         $this->components->info('Finish the setup:');
 
         collect([
-            'On the host, set FILE_BOOMERANG_ENABLED=true, FILE_BOOMERANG_GITHUB_REPOSITORY (owner/repo) and FILE_BOOMERANG_GITHUB_TOKEN (a fine-grained token with Contents read and write on that repository).',
-            'On the host, point the mailbox at a bucket with FILE_BOOMERANG_BUCKET, FILE_BOOMERANG_ENDPOINT, FILE_BOOMERANG_ACCESS_KEY_ID and FILE_BOOMERANG_SECRET_ACCESS_KEY, or name a disk from config/filesystems.php with FILE_BOOMERANG_DISK.',
+            'On the host, set FILE_BOOMERANG_ENABLED=true, FILE_BOOMERANG_GITHUB_REPOSITORY (owner/repo) and FILE_BOOMERANG_GITHUB_TOKEN (a fine-grained token with Actions read and write on that repository).',
+            'On the host, point the mailbox at a bucket with FILE_BOOMERANG_BUCKET, FILE_BOOMERANG_ENDPOINT, FILE_BOOMERANG_ACCESS_KEY_ID and FILE_BOOMERANG_SECRET_ACCESS_KEY. The GitHub Action always reads the mailbox from those four secrets, so a disk named with FILE_BOOMERANG_DISK must use the same bucket with no root or prefix.',
             'On GitHub, add the repository secrets FILE_BOOMERANG_BUCKET, FILE_BOOMERANG_ENDPOINT, FILE_BOOMERANG_ACCESS_KEY_ID and FILE_BOOMERANG_SECRET_ACCESS_KEY. Add FILE_BOOMERANG_DEPLOY_HOOK too if your host does not deploy pushes made by GitHub Actions.',
-            'Commit .github/workflows/file-boomerang.yml to the default branch. GitHub only runs repository_dispatch workflows from there.',
-            'Build command, after composer install: php artisan boomerang:pull',
+            'Commit .github/workflows/file-boomerang.yml to the default branch. GitHub only starts workflows that are there.',
+            'Add /storage/framework/file-boomerang* to .gitignore so no server baseline is ever committed.',
+            'Build command, right after composer install and before optimize or any cache warming: php artisan boomerang:pull',
             'Deploy command, when the Stache cache is shared (Redis or the database): php please stache:refresh',
             'Check everything with: php artisan boomerang:doctor',
         ])->each(fn (string $step, int $index) => $this->line(($index + 1).". {$step}"));
+    }
+
+    protected function branch(): string
+    {
+        return config()->string('file-boomerang.github.branch');
     }
 
     protected function workflowPath(): string

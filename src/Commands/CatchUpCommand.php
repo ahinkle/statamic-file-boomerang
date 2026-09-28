@@ -2,13 +2,13 @@
 
 namespace Ahinkle\FileBoomerang\Commands;
 
-use Ahinkle\FileBoomerang\Jobs\CatchUp as CatchUpJob;
+use Ahinkle\FileBoomerang\Jobs\CatchUp;
 use Ahinkle\FileBoomerang\Outcome;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use Statamic\Console\RunsInPlease;
 
-class CatchUp extends Command
+class CatchUpCommand extends Command
 {
     use RunsInPlease;
 
@@ -24,7 +24,7 @@ class CatchUp extends Command
             return self::SUCCESS;
         }
 
-        $outcome = CatchUpJob::dispatchSync();
+        $outcome = CatchUp::dispatchSync();
 
         if (! $outcome instanceof Outcome) {
             $this->components->info('This server is already up to date.');

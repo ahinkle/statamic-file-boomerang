@@ -2,13 +2,15 @@
 
 namespace Ahinkle\FileBoomerang\Commands;
 
+use Ahinkle\FileBoomerang\Exceptions\CorruptBlob;
+use Ahinkle\FileBoomerang\Exceptions\InvalidBatch;
 use Ahinkle\FileBoomerang\Exceptions\LandingRejected;
 use Ahinkle\FileBoomerang\Landing;
 use Ahinkle\FileBoomerang\LandingResult;
 use Illuminate\Console\Command;
 use Statamic\Console\RunsInPlease;
 
-class Land extends Command
+class LandCommand extends Command
 {
     use RunsInPlease;
 
@@ -22,8 +24,8 @@ class Land extends Command
 
         try {
             $result = $this->option('dry-run') ? $landing->dryRun() : $landing->land();
-        } catch (LandingRejected $landingRejected) {
-            $this->components->error($landingRejected->getMessage());
+        } catch (LandingRejected|InvalidBatch|CorruptBlob $e) {
+            $this->components->error($e->getMessage());
 
             return self::FAILURE;
         }

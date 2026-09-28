@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
 use Statamic\Console\RunsInPlease;
 use Throwable;
 
-class Status extends Command
+class StatusCommand extends Command
 {
     use RunsInPlease;
 
@@ -29,7 +29,7 @@ class Status extends Command
 
         rescue(
             fn () => $this->waiting(Batch::pending()),
-            fn (Throwable $e) => $this->components->twoColumnDetail('Batches waiting', "<fg=red>the mailbox is unreachable: {$e->getMessage()}</>"),
+            fn (Throwable $e) => $this->components->twoColumnDetail('Batches waiting', "<fg=red>could not be read: {$e->getMessage()}</>"),
             report: false,
         );
 
@@ -100,7 +100,7 @@ class Status extends Command
 
         $batches
             ->toBase()
-            ->flatMap(fn (Batch $batch) => $batch->changes)
+            ->flatMap->changes
             ->keyBy('path')
             ->sortKeys()
             ->each(fn (Change $change) => $this->components->twoColumnDetail($change->path, $change->type->value));

@@ -55,9 +55,8 @@ it('asks github once to land every waiting batch', function () {
     requestLanding();
 
     Http::assertSentCount(1);
-    Http::assertSent(fn (Request $request) => $request->url() === 'https://api.github.com/repos/ahinkle/sccc.org/dispatches'
-        && $request['event_type'] === 'file-boomerang'
-        && $request['client_payload'] === ['batches' => 2, 'newest' => $newest->id]);
+    Http::assertSent(fn (Request $request) => $request->url() === 'https://api.github.com/repos/ahinkle/sccc.org/actions/workflows/file-boomerang.yml/dispatches'
+        && $request->data() === ['ref' => 'main']);
     expect($this->mailbox()->json('file-boomerang/state/requested.json'))->newest->toBe($newest->id);
 });
 
@@ -92,8 +91,8 @@ it('fails at once when github will never accept the request', function (int $sta
     requestLanding()->assertFailedWith(new LandingRejected($reason));
 })->with([
     'a bad token' => [401, 'GitHub did not accept FILE_BOOMERANG_GITHUB_TOKEN. It is missing, expired or revoked, so create a new fine-grained token.'],
-    'a token without contents write' => [403, 'The GitHub token may not send events to ahinkle/sccc.org. Give it the Contents: Read and write permission.'],
-    'a repository the token cannot see' => [404, 'GitHub cannot see ahinkle/sccc.org. Check FILE_BOOMERANG_GITHUB_REPOSITORY and that the token has access to that repository.'],
+    'a token that may not start workflows' => [403, 'The GitHub token may not start workflows in ahinkle/sccc.org. Give it the Actions: Read and write permission.'],
+    'a workflow the token cannot find' => [404, 'GitHub cannot find .github/workflows/file-boomerang.yml in ahinkle/sccc.org. Check FILE_BOOMERANG_GITHUB_REPOSITORY, that the token has access to that repository, and that the workflow is on the default branch.'],
 ]);
 
 it('fails at once without a token', function () {

@@ -49,14 +49,15 @@ class ServiceProvider extends AddonServiceProvider
     #[Override]
     protected function schedule(Schedule $schedule): void
     {
-        $schedule->command('boomerang:push')
-            ->everyFiveMinutes()
-            ->withoutOverlapping()
-            ->when(fn () => config('file-boomerang.enabled'));
+        if (! config('file-boomerang.enabled')) {
+            return;
+        }
 
-        $schedule->command('boomerang:dispatch')
-            ->everyMinute()
-            ->withoutOverlapping()
-            ->when(fn () => config('file-boomerang.enabled'));
+        $schedule->command('boomerang:push')->everyMinute()->withoutOverlapping();
+        $schedule->command('boomerang:dispatch')->everyMinute()->withoutOverlapping();
+
+        if (config('file-boomerang.catch_up.enabled')) {
+            $schedule->command('boomerang:catch-up')->everyMinute()->withoutOverlapping();
+        }
     }
 }

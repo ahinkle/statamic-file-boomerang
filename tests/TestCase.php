@@ -50,6 +50,8 @@ abstract class TestCase extends AddonTestCase
     {
         parent::getEnvironmentSetUp($app);
 
+        $app['config']->set('cache.stores.array.serialize', true);
+
         collect([
             'taxonomies' => 'content/taxonomies',
             'terms' => 'content/taxonomies',

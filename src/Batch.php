@@ -6,6 +6,7 @@ use Ahinkle\FileBoomerang\Exceptions\InvalidBatch;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use League\Flysystem\UnableToReadFile;
 
 readonly class Batch
 {
@@ -29,10 +30,7 @@ readonly class Batch
     {
         $now = now()->toImmutable();
 
-        return tap(
-            new self((string) Str::ulid($now), $now, gethostname() ?: 'unknown', $editor, $changes->values()),
-            fn (Batch $batch) => $batch->save(),
-        );
+        return tap(new self((string) Str::ulid($now), $now, gethostname() ?: 'unknown', $editor, $changes->values()))->save();
     }
 
     public static function pending(): Batches
@@ -42,26 +40,42 @@ readonly class Batch
 
     public static function after(?string $id): Batches
     {
-        return Batches::make(
-            collect(Mailbox::disk()->files(Mailbox::path('batches')))
-                ->filter(fn (string $key) => str_ends_with($key, '.json'))
-                ->map(fn (string $key) => basename($key, '.json'))
-                ->filter(fn (string $batch) => $id === null || strcmp($batch, $id) > 0)
-                ->sort(SORT_STRING)
-                ->values()
-                ->map(fn (string $batch) => static::find($batch))
-        );
+        return Batches::make(static::ids($id)->map(fn (string $batch) => static::find($batch))->filter()->values());
     }
 
-    public static function find(string $id): self
+    /**
+     * @return Collection<int, string>
+     */
+    public static function ids(?string $after = null): Collection
     {
-        $batch = static::fromArray(
-            Mailbox::disk()->json(static::key($id)) ?? throw InvalidBatch::because("[{$id}] is not valid JSON")
-        );
+        return collect(Mailbox::disk()->files(Mailbox::path('batches')))
+            ->filter(fn (string $key) => str_ends_with($key, '.json'))
+            ->map(fn (string $key) => basename($key, '.json'))
+            ->filter(fn (string $batch) => Str::isUlid($batch))
+            ->filter(fn (string $batch) => $after === null || strcmp($batch, $after) > 0)
+            ->sort(SORT_STRING)
+            ->values();
+    }
 
-        throw_unless($batch->id === $id, InvalidBatch::because("[{$id}] holds the batch [{$batch->id}]"));
+    public static function find(string $id): ?self
+    {
+        if (($contents = static::read(static::key($id))) === null) {
+            return null;
+        }
 
-        return $batch;
+        try {
+            return static::parse($contents, $id);
+        } catch (InvalidBatch $invalid) {
+            throw $invalid->in(static::key($id));
+        }
+    }
+
+    public function save(): void
+    {
+        Mailbox::disk()->put(static::key($this->id), json_encode(
+            $this->toArray(),
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+        ));
     }
 
     public function delete(): void
@@ -85,7 +99,7 @@ readonly class Batch
             'created_at' => $this->createdAt->toIso8601String(),
             'host' => $this->host,
             'editor' => $this->editor?->toArray(),
-            'ops' => $this->changes->map(fn (Change $change) => $change->toArray())->all(),
+            'ops' => $this->changes->map->toArray()->all(),
         ];
     }
 
@@ -109,12 +123,28 @@ readonly class Batch
         );
     }
 
-    protected function save(): void
+    protected static function read(string $key): ?string
     {
-        Mailbox::disk()->put(static::key($this->id), json_encode(
-            $this->toArray(),
-            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
-        ));
+        try {
+            return Mailbox::disk()->get($key);
+        } catch (UnableToReadFile $unableToReadFile) {
+            throw_if(Mailbox::disk()->fileExists($key), $unableToReadFile);
+
+            return null;
+        }
+    }
+
+    protected static function parse(string $contents, string $id): self
+    {
+        $attributes = json_decode($contents, true);
+
+        throw_unless(is_array($attributes), InvalidBatch::because('it is not a JSON object'));
+
+        $batch = static::fromArray($attributes);
+
+        throw_unless($batch->id === $id, InvalidBatch::because("it holds the batch [{$batch->id}]"));
+
+        return $batch;
     }
 
     protected static function key(string $id): string

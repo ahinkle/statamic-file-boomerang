@@ -17,17 +17,18 @@ class CatchUpBeforeEditing
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($this->isDue()) {
+        if ($this->isDue($request)) {
             rescue(fn () => Manifest::lock(fn () => $this->catchUp()));
         }
 
         return $next($request);
     }
 
-    protected function isDue(): bool
+    protected function isDue(Request $request): bool
     {
         return config('file-boomerang.enabled')
             && config('file-boomerang.catch_up.enabled')
+            && $request->isMethodSafe()
             && User::current()
             && ! $this->caughtUpRecently();
     }

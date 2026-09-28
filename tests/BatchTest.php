@@ -50,14 +50,21 @@ it('lists pending batches oldest first and after a cursor', function () {
 
     expect(Batch::pending()->pluck('id')->all())->toBe($batches->pluck('id')->all())
         ->and(Batch::after($batches->first()->id)->pluck('id')->all())->toBe($batches->skip(1)->pluck('id')->values()->all())
-        ->and(Batch::after($batches->last()->id))->toBeEmpty()
-        ->and(Batch::after(null))->toHaveCount(3);
+        ->and(Batch::after($batches->last()->id))->toBeEmpty();
 });
 
-it('ignores keys in the batches folder that are not batches', function () {
-    $this->mailbox()->put('file-boomerang/batches/notes.txt', 'hello');
+it('ignores keys in the batches folder that are not batches', function (string $key) {
+    $this->mailbox()->put("file-boomerang/batches/{$key}", '{not json');
 
     expect(Batch::pending())->toBeEmpty();
+})->with(['notes.txt', 'notes.json']);
+
+it('treats a batch deleted since the listing as landed', function () {
+    $batch = Batch::record(collect([Change::put('content/a.md', str_repeat('f', 40), null, 1)]), null);
+
+    $batch->delete();
+
+    expect(Batch::find($batch->id))->toBeNull();
 });
 
 it('forgets a batch once it is deleted', function () {
@@ -96,11 +103,15 @@ it('refuses batches it cannot trust', function (array $overrides) {
     'a delete without a base' => [['ops' => [['path' => 'content/a.md', 'type' => 'delete', 'base' => null]]]],
 ]);
 
-it('refuses a batch that is not json', function () {
-    $this->mailbox()->put('file-boomerang/batches/01J8ZQ6X9R6B7Y5M3N2P1K0H9G.json', '{not json');
+it('names the batch it cannot read so the owner can delete it', function (string $contents) {
+    $this->mailbox()->put('file-boomerang/batches/01J8ZQ6X9R6B7Y5M3N2P1K0H9G.json', $contents);
 
     Batch::pending();
-})->throws(InvalidBatch::class);
+})->throws(InvalidBatch::class, 'The batch [file-boomerang/batches/01J8ZQ6X9R6B7Y5M3N2P1K0H9G.json] is invalid')->with([
+    'not json' => '{not json',
+    'not an object' => '"a string"',
+    'a newer version' => '{"version": 2}',
+]);
 
 it('names the editor from the control panel user', function () {
     $user = User::make()->email('greg@example.com')->set('name', "Greg <Davis>\n");

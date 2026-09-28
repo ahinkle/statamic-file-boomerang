@@ -45,10 +45,11 @@ readonly class Editor
 
     protected static function attribute(?Authenticatable $user, string $key): mixed
     {
-        return match (true) {
-            $user instanceof User => $user->{$key}(),
-            default => data_get($user, $key),
-        };
+        if ($user instanceof User) {
+            return $user->{$key}();
+        }
+
+        return data_get($user, $key);
     }
 
     protected static function clean(mixed $value): string

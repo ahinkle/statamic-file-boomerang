@@ -12,21 +12,19 @@ readonly class Conflict
      */
     public function __construct(
         public Change $change,
-        public ?Editor $editor,
         public Collection $batchIds,
         public Collection $editors,
     ) {}
 
     public static function from(Change $change, Batch $batch): self
     {
-        return new self($change, $batch->editor, collect([$batch->id]), collect([$batch->editor])->filter()->values());
+        return new self($change, collect([$batch->id]), collect([$batch->editor])->filter()->values());
     }
 
     public function joinedBy(Change $change, Batch $batch): self
     {
         return new self(
             $change,
-            $batch->editor,
             $this->batchIds->concat([$batch->id]),
             $this->editors->concat([$batch->editor])->filter()->unique('email')->values(),
         );

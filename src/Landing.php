@@ -4,6 +4,8 @@ namespace Ahinkle\FileBoomerang;
 
 use Ahinkle\FileBoomerang\Exceptions\LandingRejected;
 use Illuminate\Contracts\Process\ProcessResult;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Env;
@@ -17,9 +19,9 @@ class Landing
 {
     protected string $branch = 'main';
 
-    public static function make(): self
+    public static function make(): static
     {
-        return new self;
+        return new static;
     }
 
     public function onto(string $branch): static
@@ -33,7 +35,15 @@ class Landing
     {
         $this->ensureReady();
 
-        return tap($this->landBatches(Batch::pending()), fn (LandingResult $result) => $this->announce($result));
+        $result = $this->landBatches(Batch::pending());
+
+        $this->announce($result);
+
+        if ($result->hasUnreportedConflicts()) {
+            throw new LandingRejected("{$result->summary()} GitHub would not open a pull request or an issue for the conflicts, so the editors' versions are only on {$this->compareUrl($result->conflictsBranch)}");
+        }
+
+        return $result;
     }
 
     public function dryRun(): LandingResult
@@ -64,13 +74,9 @@ class Landing
 
         $outcome = retry(4, fn () => $this->landOnce($batches), when: fn (Throwable $e) => $e instanceof LandingRejected);
 
-        $sha = $this->head();
-
-        $conflictsUrl = $this->openConflicts($outcome, $batches);
-
         $this->cleanUp($batches);
 
-        return LandingResult::from($outcome, $sha, $conflictsUrl);
+        return LandingResult::from($outcome, $this->head(), $this->conflictBranch($outcome), $this->reportConflicts($outcome));
     }
 
     protected function landOnce(Batches $batches): Outcome
@@ -81,62 +87,83 @@ class Landing
 
         $outcome = $batches->applyTo(new GitTree(base_path()), Divergence::Merge);
 
-        $outcome->writeTo($outcome->tree);
+        $outcome->write();
 
-        $this->stage($outcome->paths());
-
-        if ($this->hasStagedChanges()) {
-            $this->commit(config()->string('file-boomerang.landing.commit_message'), $outcome->paths(), $batches);
-
-            $this->push();
-        }
+        $this->push(collect([
+            $this->commitLanding($outcome, $batches),
+            $this->commitConflicts($outcome, $batches),
+        ])->filter());
 
         return $outcome;
     }
 
-    protected function openConflicts(Outcome $outcome, Batches $batches): ?string
+    protected function commitLanding(Outcome $outcome, Batches $batches): ?string
+    {
+        $this->stage($outcome->paths());
+
+        if (! $this->hasStagedChanges()) {
+            return null;
+        }
+
+        $this->commit(config()->string('file-boomerang.landing.commit_message'), $outcome->paths(), $batches);
+
+        return "HEAD:refs/heads/{$this->branch}";
+    }
+
+    protected function commitConflicts(Outcome $outcome, Batches $batches): ?string
+    {
+        if (! $branch = $this->conflictBranch($outcome)) {
+            return null;
+        }
+
+        $this->git('switch', '--quiet', '--force-create', $branch)->throw();
+
+        try {
+            $outcome->conflicts->pluck('change')->each->writeTo($outcome->tree);
+
+            $this->stage($outcome->conflicts->keys());
+
+            if ($this->hasStagedChanges()) {
+                $this->commit($this->conflictTitle(), $outcome->conflicts->keys(), $batches);
+            }
+        } finally {
+            $this->git('switch', '--quiet', '--discard-changes', $this->branch);
+        }
+
+        return "+refs/heads/{$branch}:refs/heads/{$branch}";
+    }
+
+    protected function conflictBranch(Outcome $outcome): ?string
     {
         if ($outcome->conflicts->isEmpty()) {
             return null;
         }
 
-        $branch = "file-boomerang/conflict-{$outcome->batchIds->first()}";
-
-        $this->pushConflictBranch($outcome->conflicts, $branch, $batches);
-
-        return $this->openPullRequest($outcome->conflicts, $branch)
-            ?? $this->openIssue($outcome->conflicts, $branch)
-            ?? throw new LandingRejected("GitHub refused both a pull request and an issue for the conflicts on [{$branch}], so every batch stays in the mailbox.");
+        return "file-boomerang/conflict-{$outcome->batchIds->first()}";
     }
 
-    /**
-     * @param  Collection<string, Conflict>  $conflicts
-     */
-    protected function pushConflictBranch(Collection $conflicts, string $branch, Batches $batches): void
+    protected function reportConflicts(Outcome $outcome): ?string
     {
-        $this->git('switch', '--quiet', '--force-create', $branch)->throw();
-
-        try {
-            $conflicts->pluck('change')->each->writeTo(new GitTree(base_path()));
-
-            $this->stage($conflicts->keys());
-
-            if ($this->hasStagedChanges()) {
-                $this->commit($this->conflictTitle(), $conflicts->keys(), $batches);
-            }
-
-            $this->git('push', '--quiet', '--force', 'origin', "HEAD:refs/heads/{$branch}")->throw();
-        } finally {
-            $this->git('switch', '--quiet', '--discard-changes', $this->branch);
+        if (! $branch = $this->conflictBranch($outcome)) {
+            return null;
         }
+
+        $response = $this->openPullRequest($outcome->conflicts, $branch);
+
+        return match (true) {
+            $response->successful() => $response->fluent()->string('html_url')->value(),
+            $response->unprocessableEntity() => $this->existingPullRequest($branch),
+            $response->forbidden() => $this->openIssue($outcome->conflicts, $branch),
+            default => null,
+        };
     }
 
     /**
      * @param  Collection<string, Conflict>  $conflicts
      */
-    protected function openPullRequest(Collection $conflicts, string $branch): ?string
+    protected function openPullRequest(Collection $conflicts, string $branch): Response
     {
-        $response = Http::github()->post("repos/{$this->repository()}/pulls", [
+        return Http::github()->post("repos/{$this->repository()}/pulls", [
             'title' => $this->conflictTitle(),
             'head' => $branch,
             'base' => $this->branch,
@@ -145,8 +172,16 @@ class Landing
                 $conflicts,
             ),
         ]);
+    }
 
-        return $response->successful() ? $response->fluent()->string('html_url')->value() : null;
+    protected function existingPullRequest(string $branch): ?string
+    {
+        $url = Http::github()->get("repos/{$this->repository()}/pulls", [
+            'head' => Str::before($this->repository(), '/').":{$branch}",
+            'state' => 'open',
+        ])->json('0.html_url');
+
+        return is_string($url) ? $url : null;
     }
 
     /**
@@ -154,17 +189,20 @@ class Landing
      */
     protected function openIssue(Collection $conflicts, string $branch): ?string
     {
-        $compare = "https://github.com/{$this->repository()}/compare/{$this->branch}...{$branch}?expand=1";
-
         $response = Http::github()->post("repos/{$this->repository()}/issues", [
             'title' => $this->conflictTitle(),
             'body' => $this->conflictReport(
-                "Some control panel edits could not be merged into `{$this->branch}` because the same lines changed in git first. GitHub Actions is not allowed to open pull requests in this repository, so the editors' versions are on the branch [`{$branch}`]({$compare}). Open a pull request from it to review them. To let File Boomerang open it next time, turn on \"Allow GitHub Actions to create and approve pull requests\" under Settings, Actions, General.",
+                "Some control panel edits could not be merged into `{$this->branch}` because the same lines changed in git first. GitHub Actions is not allowed to open pull requests in this repository, so the editors' versions are on the branch [`{$branch}`]({$this->compareUrl($branch)}). Open a pull request from it to review them. To let File Boomerang open it next time, turn on \"Allow GitHub Actions to create and approve pull requests\" under Settings, Actions, General.",
                 $conflicts,
             ),
         ]);
 
         return $response->successful() ? $response->fluent()->string('html_url')->value() : null;
+    }
+
+    protected function compareUrl(string $branch): string
+    {
+        return "https://github.com/{$this->repository()}/compare/{$this->branch}...{$branch}?expand=1";
     }
 
     /**
@@ -174,7 +212,7 @@ class Landing
     {
         $rows = $conflicts->map(fn (Conflict $conflict) => $this->tableRow(
             '`'.$conflict->path().'`'.($conflict->change->isDelete() ? ' (deleted)' : ''),
-            $conflict->editors->pluck('name')->implode(', ') ?: 'System',
+            $this->escapeMarkdown($conflict->editors->pluck('name')->implode(', ')) ?: 'System',
             $conflict->batchIds->implode(', '),
         ));
 
@@ -186,6 +224,11 @@ class Landing
         return '| '.collect($cells)->map(fn (string $cell) => str_replace('|', '\|', $cell))->implode(' | ').' |';
     }
 
+    protected function escapeMarkdown(string $text): string
+    {
+        return (string) preg_replace('/[\\\\`*_{}\[\]()#!<>@~]/', '\\\\$0', $text);
+    }
+
     protected function conflictTitle(): string
     {
         return "Control panel edits that conflict with {$this->branch}";
@@ -195,7 +238,7 @@ class Landing
     {
         $batches->each->delete();
 
-        Blob::prune(Batch::pending(), now()->subMinutes(config()->integer('file-boomerang.landing.blob_grace')));
+        rescue(fn () => Blob::prune(Batch::pending(), now()->subMinutes(config()->integer('file-boomerang.landing.blob_grace'))));
     }
 
     protected function announce(LandingResult $result): void
@@ -255,7 +298,11 @@ class Landing
             return;
         }
 
-        Http::post(Str::replace('{sha}', $sha, $hook))->throw();
+        try {
+            Http::post(Str::replace('{sha}', $sha, $hook))->throw();
+        } catch (ConnectionException) {
+            throw new ConnectionException("{$sha} landed, but the deploy hook could not be reached.");
+        }
     }
 
     protected function dispatchWorkflows(): void
@@ -315,9 +362,16 @@ class Landing
         return $coAuthors->map(fn (Editor $editor) => "Co-authored-by: {$editor->name} <{$editor->email}>")->implode("\n");
     }
 
-    protected function push(): void
+    /**
+     * @param  Collection<int, string>  $refspecs
+     */
+    protected function push(Collection $refspecs): void
     {
-        $result = $this->git('push', '--quiet', 'origin', "HEAD:refs/heads/{$this->branch}");
+        if ($refspecs->isEmpty()) {
+            return;
+        }
+
+        $result = $this->git('push', '--quiet', '--atomic', 'origin', ...$refspecs);
 
         throw_if(
             $result->failed(),

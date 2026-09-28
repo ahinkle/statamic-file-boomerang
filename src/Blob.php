@@ -7,6 +7,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\File;
 use League\Flysystem\StorageAttributes;
 use League\Flysystem\UnableToReadFile;
+use Throwable;
 
 class Blob
 {
@@ -45,13 +46,15 @@ class Blob
 
         $temporary = static::download($hash, dirname($absolutePath));
 
-        if (($actual = GitHash::ofFile($temporary)) !== $hash) {
+        try {
+            throw_if(($actual = GitHash::ofFile($temporary)) !== $hash, new CorruptBlob($hash, $actual));
+
+            File::move($temporary, $absolutePath);
+        } catch (Throwable $e) {
             File::delete($temporary);
 
-            throw new CorruptBlob($hash, $actual);
+            throw $e;
         }
-
-        File::move($temporary, $absolutePath);
     }
 
     public static function prune(Batches $remaining, CarbonInterface $olderThan): int
@@ -59,7 +62,7 @@ class Blob
         $referenced = $remaining->blobs()->flip();
 
         return collect(Mailbox::disk()->listContents(Mailbox::path('blobs'), true)->toArray())
-            ->filter(fn (StorageAttributes $blob) => $blob->isFile())
+            ->filter->isFile()
             ->reject(fn (StorageAttributes $blob) => $referenced->has(basename($blob->path())))
             ->filter(fn (StorageAttributes $blob) => $blob->lastModified() < $olderThan->getTimestamp())
             ->each(fn (StorageAttributes $blob) => Mailbox::disk()->delete($blob->path()))
@@ -73,10 +76,6 @@ class Blob
 
     protected static function upload(string $hash, string $temporary): void
     {
-        if (static::exists($hash)) {
-            return;
-        }
-
         $stream = fopen($temporary, 'rb') ?: throw UnableToReadFile::fromLocation($temporary);
 
         try {
@@ -90,11 +89,16 @@ class Blob
 
     protected static function download(string $hash, string $directory): string
     {
-        $temporary = tempnam($directory, '.file-boomerang-');
         $stream = Mailbox::disk()->readStream(static::path($hash)) ?? throw UnableToReadFile::fromLocation(static::path($hash));
 
+        $temporary = tempnam($directory, '.file-boomerang-');
+
         try {
-            file_put_contents($temporary, $stream);
+            File::put($temporary, $stream);
+        } catch (Throwable $e) {
+            File::delete($temporary);
+
+            throw $e;
         } finally {
             if (is_resource($stream)) {
                 fclose($stream);

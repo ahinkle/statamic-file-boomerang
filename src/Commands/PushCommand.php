@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use Statamic\Console\RunsInPlease;
 
-class Push extends Command
+class PushCommand extends Command
 {
     use RunsInPlease;
 

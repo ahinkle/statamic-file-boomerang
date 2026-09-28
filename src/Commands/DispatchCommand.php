@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Statamic\Console\RunsInPlease;
 
-class Dispatch extends Command
+class DispatchCommand extends Command
 {
     use RunsInPlease;
 
@@ -32,7 +32,7 @@ class Dispatch extends Command
 
         Event::listen(LandingRejected::class, fn (LandingRejected $event) => $this->rejection = $event->reason);
 
-        RequestLanding::dispatchSync();
+        (new RequestLanding)->handle();
 
         if ($this->rejection) {
             $this->components->error($this->rejection);
@@ -55,10 +55,13 @@ class Dispatch extends Command
 
         $waiting = $batches->count().' '.Str::plural('batch', $batches->count());
 
-        $this->components->info(match (true) {
-            ! $batches->isQuiet($this->debounce()) => "{$waiting} waiting. GitHub will be asked {$this->quietAt($newest)}, once the editors go quiet.",
-            default => "{$waiting} waiting. GitHub was asked {$this->requestedAt()} to land them.",
-        });
+        if (! $batches->isQuiet($this->debounce())) {
+            $this->components->info("{$waiting} waiting. GitHub will be asked {$this->quietAt($newest)}, once the editors go quiet.");
+
+            return;
+        }
+
+        $this->components->info("{$waiting} waiting. GitHub was asked {$this->requestedAt()} to land them.");
     }
 
     protected function quietAt(Batch $newest): string

@@ -7,6 +7,7 @@ use Ahinkle\FileBoomerang\Change;
 use Ahinkle\FileBoomerang\Exceptions\CorruptBlob;
 use Ahinkle\FileBoomerang\GitHash;
 use Illuminate\Support\Facades\File;
+use League\Flysystem\UnableToReadFile;
 
 it('stores file bytes under their git hash', function () {
     $path = $this->writeFile('public/img/logo.png', "\x89PNG\r\n\x1a\nlogo");
@@ -19,14 +20,16 @@ it('stores file bytes under their git hash', function () {
         ->and($this->mailbox()->files('file-boomerang/blobs'))->toBe(["file-boomerang/blobs/{$hash}"]);
 });
 
-it('never rewrites a blob that is already in the mailbox', function () {
-    $path = $this->writeFile('content/home.md', 'Welcome');
-    $hash = Blob::store($path);
+it('refreshes a blob that is already in the mailbox so a push that reuses it keeps it', function () {
+    $hash = $this->storeBlob('Same bytes as last week');
+    touch($this->mailbox()->path("file-boomerang/blobs/{$hash}"), now()->subHours(2)->getTimestamp());
 
-    $this->mailbox()->put("file-boomerang/blobs/{$hash}", 'already here');
+    expect(Blob::store($this->writeFile('content/home.md', 'Same bytes as last week')))->toBe($hash);
 
-    expect(Blob::store($path))->toBe($hash)
-        ->and($this->mailbox()->get("file-boomerang/blobs/{$hash}"))->toBe('already here');
+    clearstatcache();
+
+    expect(Blob::prune(Batches::make(), now()->subHour()))->toBe(0)
+        ->and(Blob::contents($hash))->toBe('Same bytes as last week');
 });
 
 it('copies a blob into place', function () {
@@ -47,6 +50,15 @@ it('refuses a corrupt blob and leaves the file as it was', function () {
 
     expect(File::get($path))->toBe('The old notes')
         ->and(File::files(dirname($path)))->toHaveCount(1);
+});
+
+it('leaves nothing behind when a blob is missing', function () {
+    $path = $this->writeFile('content/sermons/notes.md', 'The old notes');
+
+    expect(fn () => Blob::copyTo(GitHash::of('Never mailed'), $path))->toThrow(UnableToReadFile::class);
+
+    expect(File::get($path))->toBe('The old notes')
+        ->and(File::allFiles(dirname($path), true))->toHaveCount(1);
 });
 
 it('refuses to read a corrupt blob', function () {

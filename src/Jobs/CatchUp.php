@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
 use Statamic\Assets\AssetContainer as Container;
 use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Stache;
-use Statamic\Stache\Stores\Store;
+use Throwable;
 
 class CatchUp
 {
@@ -36,13 +36,26 @@ class CatchUp
 
         $outcome = $batches->applyTo(new WorkingTree($manifest), Divergence::Skip);
 
-        $outcome->writeTo($outcome->tree);
+        try {
+            $outcome->write();
+        } catch (Throwable $e) {
+            $this->remember($outcome, $manifest, $manifest->cursor);
 
-        $manifest->withChanges($outcome->changes, $newest->id)->save();
+            throw $e;
+        }
 
-        $this->refreshStatamic($outcome->paths());
+        $this->remember($outcome, $manifest, $newest->id);
 
         return $outcome;
+    }
+
+    protected function remember(Outcome $outcome, Manifest $manifest, ?string $cursor): void
+    {
+        $inTree = $outcome->inTree();
+
+        $manifest->withChanges($inTree, $cursor)->save();
+
+        $this->refreshStatamic($outcome->paths()->intersect($inTree->keys())->values());
     }
 
     /**
@@ -62,7 +75,8 @@ class CatchUp
     protected function isInStache(string $path): bool
     {
         return Stache::stores()
-            ->map(fn (Store $store) => $store->directory())
+            ->except('assets')
+            ->map->directory()
             ->filter()
             ->contains(fn (string $directory) => str_starts_with($path, $directory));
     }
@@ -93,7 +107,7 @@ class CatchUp
 
     protected function refreshAsset(Container $container, string $path, string $absolutePath): void
     {
-        $asset = $container->makeAsset(Str::of($path)->replaceMatches('#(^|/)\.meta/([^/]+)\.yaml$#', '$1$2')->value());
+        $asset = $container->makeAsset($this->assetPath($path));
 
         $asset->cacheStore()->forget($asset->metaCacheKey());
 
@@ -104,5 +118,10 @@ class CatchUp
         }
 
         $container->contents()->forget($path);
+    }
+
+    protected function assetPath(string $path): string
+    {
+        return Str::of($path)->replaceMatches('#(^|/)\.meta/([^/]+)\.yaml$#', '$1$2')->value();
     }
 }

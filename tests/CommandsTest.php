@@ -4,11 +4,11 @@ use Ahinkle\FileBoomerang\Batch;
 use Ahinkle\FileBoomerang\Change;
 use Ahinkle\FileBoomerang\Editor;
 use Ahinkle\FileBoomerang\GitHash;
+use Ahinkle\FileBoomerang\Jobs\RequestLanding;
 use Ahinkle\FileBoomerang\Manifest;
-use Illuminate\Console\Scheduling\Event;
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     config([
@@ -107,12 +107,26 @@ it('tells the owner how to fix what is missing', function () {
         ->assertFailed();
 });
 
-it('asks for landings every minute only while enabled', function (bool $enabled) {
-    config(['file-boomerang.enabled' => $enabled]);
+it('leaves the landing request a web request is waiting on in place', function () {
+    config(['queue.default' => 'database']);
+    Queue::fake();
+    Http::fake(['api.github.com/*' => Http::response(status: 204)]);
+    Batch::record(collect([Change::put('content/pages/home.md', $this->storeBlob('Welcome home'), GitHash::of('Welcome'), 12)]), null);
+    RequestLanding::dispatchAfterDebounce();
 
-    $dispatch = collect(app(Schedule::class)->events())
-        ->first(fn (Event $event) => str_contains($event->command, 'boomerang:dispatch'));
+    $this->artisan('boomerang:dispatch')->assertSuccessful();
+    RequestLanding::dispatchAfterDebounce();
 
-    expect($dispatch->expression)->toBe('* * * * *')
-        ->and($dispatch->filtersPass(app()))->toBe($enabled);
-})->with([true, false]);
+    Queue::assertPushed(RequestLanding::class, 1);
+});
+
+it('warns when the mailbox disk adds a root the github action cannot see', function () {
+    config([
+        'filesystems.disks.scoped-mailbox' => ['driver' => 'scoped', 'disk' => 'file-boomerang-mailbox', 'prefix' => 'site'],
+        'file-boomerang.mailbox.disk' => 'scoped-mailbox',
+    ]);
+    Http::fake(['api.github.com/*' => Http::response(['id' => 1])]);
+
+    $this->artisan('boomerang:doctor')
+        ->expectsOutputToContain('the GitHub Action reads the mailbox without it, so edits would never land');
+});

@@ -8,6 +8,7 @@ use Ahinkle\FileBoomerang\Exceptions\LandingRejected;
 use Ahinkle\FileBoomerang\GitHash;
 use Ahinkle\FileBoomerang\Landing;
 use Ahinkle\FileBoomerang\LandingResult;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -197,6 +198,7 @@ it('opens a pull request for edits that conflict with the branch', function () u
     expect(fileOnRemote('content/pages/home.md'))->toBe("title: Welcome\nsummary: Our church\nbody: Sunday at 11\n")
         ->and(fileOnRemote('content/pages/home.md', "file-boomerang/conflict-{$batch->id}"))->toBe("title: Welcome\nsummary: Our church\nbody: Sunday at 10\n")
         ->and(onRemote('log', '-1', '--format=%an %s', "file-boomerang/conflict-{$batch->id}"))->toBe('Andy Hinkle Control panel edits that conflict with main')
+        ->and(onRemote('rev-parse', "file-boomerang/conflict-{$batch->id}^"))->toBe(onRemote('rev-parse', 'main'))
         ->and($result->conflictsUrl)->toBe('https://github.com/ahinkle/sccc.org/pull/7')
         ->and(batchesInMailbox())->toBeEmpty();
 
@@ -225,14 +227,77 @@ it('opens an issue when github actions may not open pull requests', function () 
         && str_contains($request['body'], '| `content/pages/home.md` (deleted) | System |'));
 });
 
-it('keeps every batch when github refuses both a pull request and an issue', function () use ($home) {
-    Http::fake(['api.github.com/*' => Http::response(['message' => 'Resource not accessible by integration'], 403)]);
+it('empties the mailbox and fails loudly when github refuses both a pull request and an issue', function () use ($home) {
+    Http::fake([
+        'api.github.com/repos/ahinkle/sccc.org/pulls' => Http::response(['message' => 'Resource not accessible by integration'], 403),
+        'api.github.com/repos/ahinkle/sccc.org/issues' => Http::response(['message' => 'Issues are disabled for this repo'], 410),
+    ]);
     pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
+    $first = mailed(edit('content/pages/about.md', 'About us'));
     mailed(edit('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 10\n", from: $home));
 
-    expect(fn () => landing())->toThrow(LandingRejected::class);
+    expect(fn () => landing())->toThrow(LandingRejected::class, "https://github.com/ahinkle/sccc.org/compare/main...file-boomerang/conflict-{$first->id}?expand=1");
 
-    expect(batchesInMailbox())->toHaveCount(1);
+    expect(fileOnRemote('content/pages/about.md'))->toBe('About us')
+        ->and(fileOnRemote('content/pages/home.md', "file-boomerang/conflict-{$first->id}"))->toBe("title: Welcome\nsummary: Our church\nbody: Sunday at 10\n")
+        ->and(batchesInMailbox())->toBeEmpty();
+
+    pushFromAnotherClone('content/pages/about.md', 'About our church');
+    $this->git('pull', '--quiet');
+
+    landing();
+
+    expect(fileOnRemote('content/pages/about.md'))->toBe('About our church');
+});
+
+it('lands again after a run that stopped before emptying the mailbox', function () use ($home, $andy) {
+    Http::fake([
+        'api.github.com/repos/ahinkle/sccc.org/pulls' => Http::sequence()
+            ->push(['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7'], 201)
+            ->push(['message' => 'A pull request already exists for ahinkle:file-boomerang/conflict.'], 422),
+        'api.github.com/repos/ahinkle/sccc.org/pulls?*' => Http::response([['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7']]),
+    ]);
+    pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
+    $this->git('pull', '--quiet');
+    $batch = mailed(edit('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 10\n", from: $home), $andy);
+    $saved = $this->mailbox()->get("file-boomerang/batches/{$batch->id}.json");
+
+    landing();
+    $landed = onRemote('rev-parse', 'main');
+    $this->mailbox()->put("file-boomerang/batches/{$batch->id}.json", $saved);
+
+    $result = landing();
+
+    expect(onRemote('rev-parse', 'main'))->toBe($landed)
+        ->and($result->conflictsUrl)->toBe('https://github.com/ahinkle/sccc.org/pull/7')
+        ->and(fileOnRemote('content/pages/home.md', "file-boomerang/conflict-{$batch->id}"))->toBe("title: Welcome\nsummary: Our church\nbody: Sunday at 10\n")
+        ->and(batchesInMailbox())->toBeEmpty();
+
+    Http::assertNotSent(fn (Request $request) => str_ends_with($request->url(), '/issues'));
+});
+
+it('keeps a renamed page off the branch when the old page changed in git', function () use ($home) {
+    Http::fake(['api.github.com/repos/ahinkle/sccc.org/pulls' => Http::response(['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7'], 201)]);
+    pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
+    $renamed = Batch::record(collect([removal('content/pages/home.md', from: $home), edit('content/pages/welcome.md', $home)]), null);
+    $before = onRemote('rev-parse', 'main');
+
+    landing();
+
+    expect(onRemote('rev-parse', 'main'))->toBe($before)
+        ->and(fileOnRemote('content/pages/home.md', "file-boomerang/conflict-{$renamed->id}"))->toBeNull()
+        ->and(fileOnRemote('content/pages/welcome.md', "file-boomerang/conflict-{$renamed->id}"))->toBe($home);
+});
+
+it('keeps the old page on the branch when a rename lands on a page git already has', function () use ($home) {
+    Http::fake(['api.github.com/repos/ahinkle/sccc.org/pulls' => Http::response(['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7'], 201)]);
+    pushFromAnotherClone('content/pages/welcome.md', 'A different welcome page');
+    Batch::record(collect([removal('content/pages/home.md', from: $home), edit('content/pages/welcome.md', $home)]), null);
+
+    landing();
+
+    expect(fileOnRemote('content/pages/home.md'))->toBe($home)
+        ->and(fileOnRemote('content/pages/welcome.md'))->toBe('A different welcome page');
 });
 
 it('deletes only the batches it landed', function () use ($home) {
@@ -262,6 +327,33 @@ it('prunes landed blobs once they are past the grace period', function () use ($
     expect($this->mailbox()->files('file-boomerang/blobs'))->toBe(["file-boomerang/blobs/{$fresh}"]);
 });
 
+it('keeps an old blob that a new push reuses while the landing cleans up', function () use ($home) {
+    mailed(edit('content/pages/home.md', "title: Welcome home\nsummary: Our church\nbody: Sunday at 9\n", from: $home));
+    $reused = $this->storeBlob('Same bytes as last month');
+    collect($this->mailbox()->files('file-boomerang/blobs'))->each(fn (string $blob) => touch(
+        $this->mailbox()->path($blob), now()->subHours(2)->getTimestamp()
+    ));
+
+    expect($this->storeBlob('Same bytes as last month'))->toBe($reused);
+
+    clearstatcache();
+    landing();
+
+    expect(Blob::exists($reused))->toBeTrue();
+});
+
+it('lands the rest when an edit is missing from the mailbox', function () {
+    $lost = mailed(edit('content/pages/lost.md', 'Lost'));
+    $this->mailbox()->delete("file-boomerang/blobs/{$lost->changes->sole()->blob}");
+    mailed(edit('content/pages/about.md', 'About us'));
+
+    $result = landing();
+
+    expect(fileOnRemote('content/pages/about.md'))->toBe('About us')
+        ->and($result->skipped->all())->toBe(['content/pages/lost.md' => 'its contents are missing from the mailbox'])
+        ->and(batchesInMailbox())->toBeEmpty();
+});
+
 it('skips unsafe and untracked paths and lands the rest', function () {
     mailed(edit('content/../escape.md', 'nope'));
     mailed(edit('.git/hooks/pre-commit', 'nope'));
@@ -287,6 +379,18 @@ it('keeps every batch when a blob is corrupt', function () use ($home) {
     expect(fn () => landing())->toThrow(CorruptBlob::class);
 
     expect(onRemote('rev-parse', 'main'))->toBe($initial)
+        ->and(batchesInMailbox())->toHaveCount(2);
+});
+
+it('names a batch it cannot read and lands nothing', function () {
+    mailed(edit('content/pages/about.md', 'About us'));
+    $this->mailbox()->put('file-boomerang/batches/01J8ZQ6X9R6B7Y5M3N2P1K0H9G.json', '{"version": 2}');
+
+    $this->artisan('boomerang:land')
+        ->expectsOutputToContain('file-boomerang/batches/01J8ZQ6X9R6B7Y5M3N2P1K0H9G.json')
+        ->assertFailed();
+
+    expect(onRemote('rev-list', '--count', 'main'))->toBe('1')
         ->and(batchesInMailbox())->toHaveCount(2);
 });
 
@@ -351,6 +455,27 @@ it('deploys, runs the other workflows and reports to github actions after landin
 
     expect(File::get(dirname(base_path()).'/github-output'))->toBe("landed=true\nsha={$result->sha}\nconflicts=0\n")
         ->and(File::get(dirname(base_path()).'/github-summary'))->toContain($result->summary(), '| `content/pages/about.md` | landed |');
+});
+
+it('never prints the deploy hook when it cannot be reached', function () {
+    config(['file-boomerang.landing.deploy_hook' => 'https://cloud.example.com/deploy/hook-token?commit_hash={sha}']);
+    Http::fake(['cloud.example.com/*' => Http::failedConnection(), '*' => Http::response()]);
+    mailed(edit('content/pages/about.md', 'About us'));
+
+    expect(fn () => landing())->toThrow(fn (ConnectionException $e) => expect($e->getMessage())->not->toContain('hook-token'));
+
+    expect(fileOnRemote('content/pages/about.md'))->toBe('About us')
+        ->and(batchesInMailbox())->toBeEmpty();
+});
+
+it('keeps editor names from adding links or mentions to the conflict report', function () use ($home) {
+    Http::fake(['api.github.com/repos/ahinkle/sccc.org/pulls' => Http::response(['html_url' => 'https://github.com/ahinkle/sccc.org/pull/7'], 201)]);
+    pushFromAnotherClone('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 11\n");
+    mailed(edit('content/pages/home.md', "title: Welcome\nsummary: Our church\nbody: Sunday at 10\n", from: $home), new Editor('[Reset](https://evil.example) @org/team', 'mallory@example.com'));
+
+    landing();
+
+    Http::assertSent(fn (Request $request) => str_contains($request['body'], '| \\[Reset\\]\\(https://evil.example\\) \\@org/team |'));
 });
 
 it('prints what landed', function () {

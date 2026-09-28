@@ -3,7 +3,6 @@
 namespace Ahinkle\FileBoomerang\Jobs;
 
 use Ahinkle\FileBoomerang\Batch;
-use Ahinkle\FileBoomerang\Batches;
 use Ahinkle\FileBoomerang\Events\LandingRejected;
 use Ahinkle\FileBoomerang\Events\LandingRequested;
 use Ahinkle\FileBoomerang\Exceptions\LandingRejected as LandingRejectedException;
@@ -75,7 +74,7 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
             return;
         }
 
-        $this->request($batches, $newest);
+        $this->request($newest);
     }
 
     protected function waitForQuiet(Batch $newest): void
@@ -87,7 +86,7 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
         static::dispatch()->delay($newest->createdAt()->addSeconds(static::debounce()));
     }
 
-    protected function request(Batches $batches, Batch $newest): void
+    protected function request(Batch $newest): void
     {
         if (blank(config('file-boomerang.github.repository')) || blank(config('file-boomerang.github.token'))) {
             $this->reject('Set FILE_BOOMERANG_GITHUB_REPOSITORY and FILE_BOOMERANG_GITHUB_TOKEN so File Boomerang can ask GitHub to land the waiting batches.');
@@ -95,16 +94,21 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
             return;
         }
 
-        $response = Http::github()->post("repos/{$this->repository()}/dispatches", [
-            'event_type' => config('file-boomerang.github.event'),
-            'client_payload' => ['batches' => $batches->count(), 'newest' => $newest->id],
+        $response = Http::github()->post("repos/{$this->repository()}/actions/workflows/file-boomerang.yml/dispatches", [
+            'ref' => config()->string('file-boomerang.github.branch'),
         ]);
 
-        match (true) {
-            $response->successful() => $this->requested($newest),
-            $this->isWorthRetrying($response) => $response->throw(),
-            default => $this->reject($this->reasonFor($response)),
-        };
+        if ($response->successful()) {
+            $this->requested($newest);
+
+            return;
+        }
+
+        if ($this->isWorthRetrying($response)) {
+            $response->throw();
+        }
+
+        $this->reject($this->reasonFor($response));
     }
 
     protected function requested(Batch $newest): void
@@ -132,19 +136,16 @@ class RequestLanding implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
     protected function isRateLimited(Response $response): bool
     {
-        if ($response->header('Retry-After') !== '') {
-            return true;
-        }
-
-        return $response->header('X-RateLimit-Remaining') === '0';
+        return $response->header('Retry-After') !== ''
+            || $response->header('X-RateLimit-Remaining') === '0';
     }
 
     protected function reasonFor(Response $response): string
     {
         return match ($response->status()) {
             401 => 'GitHub did not accept FILE_BOOMERANG_GITHUB_TOKEN. It is missing, expired or revoked, so create a new fine-grained token.',
-            403 => "The GitHub token may not send events to {$this->repository()}. Give it the Contents: Read and write permission.",
-            404 => "GitHub cannot see {$this->repository()}. Check FILE_BOOMERANG_GITHUB_REPOSITORY and that the token has access to that repository.",
+            403 => "The GitHub token may not start workflows in {$this->repository()}. Give it the Actions: Read and write permission.",
+            404 => "GitHub cannot find .github/workflows/file-boomerang.yml in {$this->repository()}. Check FILE_BOOMERANG_GITHUB_REPOSITORY, that the token has access to that repository, and that the workflow is on the default branch.",
             default => "GitHub refused the landing request with status {$response->status()}: {$response->fluent()->string('message', $response->body())}",
         };
     }

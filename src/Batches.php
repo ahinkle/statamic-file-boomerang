@@ -2,7 +2,6 @@
 
 namespace Ahinkle\FileBoomerang;
 
-use Ahinkle\FileBoomerang\Exceptions\UnsafePath;
 use Illuminate\Support\Collection;
 
 /**
@@ -29,7 +28,7 @@ class Batches extends Collection
      */
     public function editors(): Collection
     {
-        return $this->toBase()->map(fn (Batch $batch) => $batch->editor)->filter()->unique('email')->values();
+        return $this->toBase()->pluck('editor')->filter()->unique('email')->values();
     }
 
     /**
@@ -38,9 +37,9 @@ class Batches extends Collection
     public function blobs(): Collection
     {
         return $this->toBase()
-            ->flatMap(fn (Batch $batch) => $batch->changes)
+            ->flatMap->changes
             ->flatMap(fn (Change $change) => [$change->blob, $change->base])
-            ->filter(fn (?string $hash) => $hash !== null)
+            ->filter()
             ->unique()
             ->values();
     }
@@ -55,21 +54,60 @@ class Batches extends Collection
 
     public function applyTo(Tree $tree, Divergence $divergence): Outcome
     {
-        return tap(new Outcome($tree, $this->toBase()->map(fn (Batch $batch) => $batch->id)), function (Outcome $outcome) use ($divergence): void {
-            $this->each(fn (Batch $batch) => $batch->changes->each(
-                fn (Change $change) => $this->applyChange($change, $batch, $outcome, $divergence)
-            ));
-        });
+        $outcome = new Outcome($tree, $this->toBase()->map(fn (Batch $batch) => $batch->id));
+
+        $this->each(fn (Batch $batch) => $this->applyBatch($batch, $outcome, $divergence));
+
+        return $outcome;
     }
 
-    protected function applyChange(Change $change, Batch $batch, Outcome $outcome, Divergence $divergence): void
+    protected function applyBatch(Batch $batch, Outcome $outcome, Divergence $divergence): void
     {
-        if ($reason = $this->whyUnsafe($change->path)) {
-            $outcome->skip($change->path, $reason);
+        $reasons = $batch->changes->mapWithKeys(fn (Change $change) => [$change->path => $this->whySkipped($change)])->filter();
+
+        $reasons->each(fn (string $reason, string $path) => $outcome->skip($path, $reason));
+
+        $changes = $batch->changes->reject(fn (Change $change) => $reasons->has($change->path));
+
+        if ($divergence === Divergence::Merge && $changes->contains(fn (Change $change) => $this->conflicts($change, $outcome))) {
+            $changes->each(fn (Change $change) => $outcome->conflict($change, $batch));
 
             return;
         }
 
+        $changes->each(fn (Change $change) => $this->applyChange($change, $batch, $outcome, $divergence));
+    }
+
+    protected function whySkipped(Change $change): ?string
+    {
+        if ($reason = Paths::whyUnsafe($change->path)) {
+            return $reason;
+        }
+
+        if ($change->isMissingFromTheMailbox()) {
+            return 'its contents are missing from the mailbox';
+        }
+
+        return null;
+    }
+
+    protected function conflicts(Change $change, Outcome $outcome): bool
+    {
+        if ($outcome->isConflicted($change->path)) {
+            return true;
+        }
+
+        $hash = $outcome->hash($change->path);
+
+        if ($change->isAppliedTo($hash) || $change->fastForwardsFrom($hash)) {
+            return false;
+        }
+
+        return $this->threeWayMerge($outcome, $change) === null;
+    }
+
+    protected function applyChange(Change $change, Batch $batch, Outcome $outcome, Divergence $divergence): void
+    {
         if ($outcome->isConflicted($change->path)) {
             $outcome->conflict($change, $batch);
 
@@ -78,20 +116,30 @@ class Batches extends Collection
 
         $hash = $outcome->hash($change->path);
 
-        match (true) {
-            $change->isAppliedTo($hash) => null,
-            $change->fastForwardsFrom($hash) => $outcome->accept($change),
-            default => $this->diverge($change, $batch, $outcome, $divergence),
-        };
+        if ($change->isAppliedTo($hash)) {
+            $outcome->find($change);
+
+            return;
+        }
+
+        if ($change->fastForwardsFrom($hash)) {
+            $outcome->accept($change);
+
+            return;
+        }
+
+        $this->diverge($change, $batch, $outcome, $divergence);
     }
 
     protected function diverge(Change $change, Batch $batch, Outcome $outcome, Divergence $divergence): void
     {
-        match ($divergence) {
-            Divergence::Skip => $outcome->skip($change->path, 'it changed here after the edit was made'),
-            Divergence::PreferEditor => $outcome->accept($change),
-            Divergence::Merge => $this->mergeInto($outcome, $change, $batch),
-        };
+        if ($divergence === Divergence::Skip) {
+            $outcome->skip($change->path, 'it changed here after the edit was made, so the landing will merge it');
+
+            return;
+        }
+
+        $this->mergeInto($outcome, $change, $batch);
     }
 
     protected function mergeInto(Outcome $outcome, Change $change, Batch $batch): void
@@ -122,16 +170,5 @@ class Batches extends Collection
         }
 
         return (new ThreeWayMerge)($ours, $base, $theirs);
-    }
-
-    protected function whyUnsafe(string $path): ?string
-    {
-        try {
-            Paths::assertSafe($path);
-        } catch (UnsafePath $unsafePath) {
-            return $unsafePath->reason;
-        }
-
-        return null;
     }
 }

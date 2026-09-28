@@ -38,7 +38,13 @@ class Paths
             return null;
         }
 
-        return static::relative($disk['root']);
+        $root = static::relative($disk['root']);
+
+        if ($root === null || ! static::isPublic($root)) {
+            return null;
+        }
+
+        return $root;
     }
 
     public static function allows(string $path): bool
@@ -80,7 +86,7 @@ class Paths
         return $file->getSize() > config('file-boomerang.max_file_size');
     }
 
-    protected static function whyUnsafe(string $path): ?string
+    public static function whyUnsafe(string $path): ?string
     {
         $segments = collect(explode('/', $path));
 
@@ -88,11 +94,13 @@ class Paths
             $path === '' => 'it is empty',
             str_starts_with($path, '/') || preg_match('/^[a-zA-Z]:/', $path) === 1 => 'it is absolute',
             str_contains($path, '\\') => 'it contains a backslash',
+            str_contains($path, '`') => 'it contains a backtick',
             preg_match('/[\x00-\x1F\x7F]/', $path) === 1 => 'it contains a control character',
             $segments->intersect(['', '.', '..'])->isNotEmpty() => 'it has an empty, "." or ".." segment',
             $segments->map(fn (string $segment) => Str::lower($segment))->contains('.git') => 'it is inside a .git directory',
             ! static::isTracked($path) => 'it is not inside a tracked path',
             static::isExcluded($path) => 'it is excluded',
+            static::passesThroughSymlink($path) => 'it is inside a symbolic link',
             default => null,
         };
     }
@@ -100,6 +108,22 @@ class Paths
     protected static function isTracked(string $path): bool
     {
         return static::tracked()->contains(fn (string $root) => static::isWithin($path, $root));
+    }
+
+    protected static function isPublic(string $root): bool
+    {
+        $public = static::relative(public_path());
+
+        return $public !== null && str_starts_with($root, "{$public}/");
+    }
+
+    protected static function passesThroughSymlink(string $path): bool
+    {
+        $segments = explode('/', $path);
+
+        return collect($segments)
+            ->keys()
+            ->contains(fn (int $index) => is_link(base_path(implode('/', array_slice($segments, 0, $index + 1)))));
     }
 
     protected static function isExcluded(string $path): bool
@@ -142,8 +166,8 @@ class Paths
 
         return AssetContainer::all()
             ->whereInstanceOf(Container::class)
-            ->map(fn (Container $container) => static::assetContainerRoot($container))
-            ->filter(fn (?string $root) => $root !== null)
+            ->map(static::assetContainerRoot(...))
+            ->filter()
             ->values();
     }
 

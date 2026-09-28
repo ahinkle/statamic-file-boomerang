@@ -32,6 +32,8 @@ return [
     'exclude' => [
         '.DS_Store',
         '*/.DS_Store',
+        '.env*',
+        '*/.env*',
     ],
 
     'max_file_size' => 50 * 1024 * 1024,
@@ -49,7 +51,6 @@ return [
         'repository' => env('FILE_BOOMERANG_GITHUB_REPOSITORY'),
         'branch' => env('FILE_BOOMERANG_GITHUB_BRANCH', 'main'),
         'token' => env('FILE_BOOMERANG_GITHUB_TOKEN'),
-        'event' => 'file-boomerang',
     ],
 
     'landing' => [

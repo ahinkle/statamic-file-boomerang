@@ -12,6 +12,7 @@ readonly class Outcome
      * @param  Collection<string, string>  $merged
      * @param  Collection<string, Conflict>  $conflicts
      * @param  Collection<string, string>  $skipped
+     * @param  Collection<string, Change>  $found
      * @param  Collection<string, ?string>  $originals
      * @param  Collection<string, ?string>  $hashes
      */
@@ -22,6 +23,7 @@ readonly class Outcome
         public Collection $merged = new Collection,
         public Collection $conflicts = new Collection,
         public Collection $skipped = new Collection,
+        protected Collection $found = new Collection,
         protected Collection $originals = new Collection,
         protected Collection $hashes = new Collection,
     ) {}
@@ -58,6 +60,11 @@ readonly class Outcome
         }
     }
 
+    public function find(Change $change): void
+    {
+        $this->found->put($change->path, $change);
+    }
+
     public function conflict(Change $change, Batch $batch): void
     {
         $conflict = $this->conflicts->get($change->path);
@@ -83,11 +90,21 @@ readonly class Outcome
         return $this->changes->keys()->concat($this->merged->keys())->sort()->values();
     }
 
-    public function writeTo(Tree $tree): void
+    public function write(): void
     {
-        $this->changes->each->writeTo($tree);
+        $this->changes->each->writeTo($this->tree);
 
-        $this->merged->each(fn (string $contents, string $path) => $tree->write($path, $contents));
+        $this->merged->each(fn (string $contents, string $path) => $this->tree->write($path, $contents));
+    }
+
+    /**
+     * @return Collection<string, Change>
+     */
+    public function inTree(): Collection
+    {
+        return $this->found
+            ->merge($this->changes)
+            ->filter(fn (Change $change) => $change->isAppliedTo($this->tree->hash($change->path)));
     }
 
     protected function original(string $path): ?string
@@ -101,6 +118,7 @@ readonly class Outcome
 
         $this->changes->forget($path);
         $this->merged->forget($path);
+        $this->found->forget($path);
         $this->hashes->put($path, $hash);
     }
 
