@@ -12,7 +12,7 @@ readonly class Outcome
      * @param  Collection<string, string>  $merged
      * @param  Collection<string, Conflict>  $conflicts
      * @param  Collection<string, string>  $skipped
-     * @param  Collection<string, Change>  $found
+     * @param  Collection<string, Change>  $applied
      * @param  Collection<string, ?string>  $originals
      * @param  Collection<string, ?string>  $hashes
      */
@@ -23,7 +23,7 @@ readonly class Outcome
         public Collection $merged = new Collection,
         public Collection $conflicts = new Collection,
         public Collection $skipped = new Collection,
-        protected Collection $found = new Collection,
+        protected Collection $applied = new Collection,
         protected Collection $originals = new Collection,
         protected Collection $hashes = new Collection,
     ) {}
@@ -60,9 +60,9 @@ readonly class Outcome
         }
     }
 
-    public function find(Change $change): void
+    public function alreadyApplied(Change $change): void
     {
-        $this->found->put($change->path, $change);
+        $this->applied->put($change->path, $change);
     }
 
     public function conflict(Change $change, Batch $batch): void
@@ -102,7 +102,7 @@ readonly class Outcome
      */
     public function inTree(): Collection
     {
-        return $this->found
+        return $this->applied
             ->merge($this->changes)
             ->filter(fn (Change $change) => $change->isAppliedTo($this->tree->hash($change->path)));
     }
@@ -118,7 +118,7 @@ readonly class Outcome
 
         $this->changes->forget($path);
         $this->merged->forget($path);
-        $this->found->forget($path);
+        $this->applied->forget($path);
         $this->hashes->put($path, $hash);
     }
 

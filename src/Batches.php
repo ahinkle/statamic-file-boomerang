@@ -117,7 +117,7 @@ class Batches extends Collection
         $hash = $outcome->hash($change->path);
 
         if ($change->isAppliedTo($hash)) {
-            $outcome->find($change);
+            $outcome->alreadyApplied($change);
 
             return;
         }
