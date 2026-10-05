@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Clearing or refreshing the Stache now also brings Statamic's list of asset files, and what it remembers about each one, in line with the disk. With a shared cache that list outlives a deploy, so an image added, renamed or removed in Git stayed missing or lingered until the whole cache was cleared.
+
 ## 0.1.0
 
 - First release.

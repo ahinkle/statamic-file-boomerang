@@ -4,6 +4,7 @@ namespace Ahinkle\FileBoomerang;
 
 use Ahinkle\FileBoomerang\Http\Middleware\CatchUpBeforeEditing;
 use Ahinkle\FileBoomerang\Listeners\RecordContentChanges;
+use Ahinkle\FileBoomerang\Listeners\RefreshChangedAssets;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Client\PendingRequest;
@@ -11,11 +12,18 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Http;
 use Override;
+use Statamic\Events\StacheCleared;
 use Statamic\Providers\AddonServiceProvider;
 
 class ServiceProvider extends AddonServiceProvider
 {
     protected $config = true;
+
+    protected $listen = [
+        StacheCleared::class => [
+            RefreshChangedAssets::class,
+        ],
+    ];
 
     protected $subscribe = [
         RecordContentChanges::class,
