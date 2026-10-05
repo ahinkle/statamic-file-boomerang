@@ -115,7 +115,7 @@ Under **Settings > Deployments**:
   ```
   php please stache:refresh
   ```
-  With a shared cache, the Stache outlives the deploy, so refresh it to pick up what was committed.
+  With a shared cache, the Stache outlives the deploy, so refresh it to pick up what was committed. Statamic's list of asset files outlives it too, and nothing in Statamic refreshes that, so File Boomerang brings it in line with the disk whenever the Stache is cleared. Images added, renamed or removed in Git show up after the same command.
 
 ### 5. Compute
 
